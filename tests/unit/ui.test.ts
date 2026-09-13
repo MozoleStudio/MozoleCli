@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { render } from "ink";
 import prompts from "prompts";
+import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { doctorCommand } from "../../src/commands/doctor.js";
 import { phaseCommand } from "../../src/commands/phase.js";
@@ -9,6 +11,7 @@ import { repomapCommand } from "../../src/commands/repomap.js";
 import { uiCommand } from "../../src/commands/ui.js";
 import { verifyCommand } from "../../src/commands/verify.js";
 import { serverManager } from "../../src/server/manager.js";
+import { CockpitApp } from "../../src/ui/CockpitApp.js";
 import { atomicWrite } from "../../src/utils/fs.js";
 
 vi.mock("prompts", () => ({ default: vi.fn() }));
@@ -118,5 +121,16 @@ describe("prototype cockpit selection", () => {
       .mockResolvedValueOnce({ action: "doctor" });
     await uiCommand();
     expect(doctorCommand).toHaveBeenCalled();
+  });
+
+  it("renders CockpitApp Ink component with htop layout without throwing", () => {
+    const instance = render(
+      React.createElement(CockpitApp, {
+        projectRoot: path.join(root, "projects/client"),
+        activeProject: "client",
+      }),
+    );
+    expect(instance).toBeDefined();
+    instance.unmount();
   });
 });
