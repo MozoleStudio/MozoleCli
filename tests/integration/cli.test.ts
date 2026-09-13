@@ -201,7 +201,7 @@ describe("CLI Integration Suite", () => {
       env: { CONSOLA_LEVEL: "3" },
     });
     expect(resVersion.exitCode).toBe(0);
-    expect(resVersion.stdout).toContain("2.1.0");
+    expect(resVersion.stdout).toContain("2.1.1");
 
     const resHelp = await run(process.execPath, [cliDistPath, "--help"], {
       env: { CONSOLA_LEVEL: "3" },

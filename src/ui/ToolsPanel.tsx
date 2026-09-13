@@ -32,10 +32,14 @@ export function ToolsPanel({
   projectRoot,
   onBack,
   onLog,
+  onTabSelect,
+  onEditingChange,
 }: {
   projectRoot: string;
   onBack: () => void;
   onLog: (text: string, level?: "info" | "success" | "warn" | "error") => void;
+  onTabSelect?: (tab: "overview" | "servers" | "projects" | "logs" | "workspace" | "tools") => void;
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const [selected, setSelected] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -85,18 +89,57 @@ export function ToolsPanel({
   useInput((input, key) => {
     if (busy) return;
     if (key.escape) {
-      if (editing) setEditing(false);
-      else onBack();
+      if (editing) {
+        setEditing(false);
+        onEditingChange?.(false);
+      } else {
+        onBack();
+      }
       return;
     }
     if (!editing) {
-      if (key.upArrow) setSelected((value) => (value + 2) % 3);
-      else if (key.downArrow) setSelected((value) => (value + 1) % 3);
-      else if (key.return) {
+      if (input === "1") {
+        onTabSelect?.("overview");
+        return;
+      }
+      if (input === "2") {
+        onTabSelect?.("servers");
+        return;
+      }
+      if (input === "3") {
+        onTabSelect?.("projects");
+        return;
+      }
+      if (input === "4") {
+        onTabSelect?.("logs");
+        return;
+      }
+      if (input === "5") {
+        onTabSelect?.("workspace");
+        return;
+      }
+      if (input === "6") {
+        onTabSelect?.("tools");
+        return;
+      }
+      if (key.tab) {
+        onTabSelect?.("overview");
+        return;
+      }
+      if (key.upArrow) {
+        setSelected((value) => (value + 2) % 3);
+        return;
+      }
+      if (key.downArrow) {
+        setSelected((value) => (value + 1) % 3);
+        return;
+      }
+      if (key.return) {
         setValues([...defaults[selected]]);
         setField(0);
         setMessages([]);
         setEditing(true);
+        onEditingChange?.(true);
       }
       return;
     }
@@ -140,7 +183,7 @@ export function ToolsPanel({
               {name}
             </Text>
           ))}
-          <Text dimColor>↑↓ select · Enter configure · Esc overview</Text>
+          <Text dimColor>↑↓ select · Enter configure · [1-5] switch tab · Esc overview</Text>
         </>
       ) : (
         <>

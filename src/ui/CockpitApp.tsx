@@ -65,6 +65,7 @@ export function CockpitApp({
 
   // Feedback/Error
   const [formError, setFormError] = useState<string | null>(null);
+  const [toolsEditing, setToolsEditing] = useState<boolean>(false);
 
   const [selectedProjectIndex, setSelectedProjectIndex] = useState<number>(() => {
     const idx = projects.findIndex((p) => p.name === initialActiveProject);
@@ -385,7 +386,7 @@ export function CockpitApp({
   // Keyboard navigation
   useInput(
     (input, key) => {
-      if (currentTab === "tools") return;
+      if (currentTab === "tools" && toolsEditing) return;
       // Form interaction inside Workspace tab
       if (currentTab === "workspace" && workspaceMode !== "menu") {
         if (key.escape) {
@@ -480,19 +481,36 @@ export function CockpitApp({
       }
 
       if (key.escape || input === "q" || input === "Q") {
+        if (currentTab === "tools") {
+          setCurrentTab("overview");
+          return;
+        }
         onExit?.();
         exit();
         return;
       }
 
       // Tab jumping
-      if (input === "1") setCurrentTab("overview");
-      else if (input === "2") setCurrentTab("servers");
-      else if (input === "3") setCurrentTab("projects");
-      else if (input === "4") setCurrentTab("logs");
-      else if (input === "5") setCurrentTab("workspace");
-      else if (input === "6") setCurrentTab("tools");
-      else if (key.tab) {
+      if (input === "1") {
+        setToolsEditing(false);
+        setCurrentTab("overview");
+      } else if (input === "2") {
+        setToolsEditing(false);
+        setCurrentTab("servers");
+      } else if (input === "3") {
+        setToolsEditing(false);
+        setCurrentTab("projects");
+      } else if (input === "4") {
+        setToolsEditing(false);
+        setCurrentTab("logs");
+      } else if (input === "5") {
+        setToolsEditing(false);
+        setCurrentTab("workspace");
+      } else if (input === "6") {
+        setToolsEditing(false);
+        setCurrentTab("tools");
+      } else if (key.tab) {
+        setToolsEditing(false);
         setCurrentTab((prev) => {
           if (prev === "overview") return "servers";
           if (prev === "servers") return "projects";
@@ -651,14 +669,22 @@ export function CockpitApp({
             : "  [5] WORKSPACE & GENERATOR"}
         </Text>
         <Text bold color={currentTab === "tools" ? "cyan" : "gray"}>
-          [6] TOOLS
+          {currentTab === "tools" ? "● [6] TOOLS" : "  [6] TOOLS"}
         </Text>
       </Box>
 
       {currentTab === "tools" && (
         <ToolsPanel
           projectRoot={projectRoot}
-          onBack={() => setCurrentTab("overview")}
+          onBack={() => {
+            setToolsEditing(false);
+            setCurrentTab("overview");
+          }}
+          onTabSelect={(tab) => {
+            setToolsEditing(false);
+            setCurrentTab(tab);
+          }}
+          onEditingChange={setToolsEditing}
           onLog={addLog}
         />
       )}
@@ -1344,7 +1370,7 @@ export function CockpitApp({
         <Box gap={1}>
           <Text>
             <Text bold color="cyan">
-              [1-5]
+              [1-6]
             </Text>
             <Text dimColor> Tabs</Text>
           </Text>
@@ -1354,6 +1380,14 @@ export function CockpitApp({
             </Text>
             <Text dimColor> Next Tab</Text>
           </Text>
+          {currentTab === "tools" && !toolsEditing && (
+            <Text>
+              <Text bold color="yellow">
+                [Enter]
+              </Text>
+              <Text dimColor> Configure</Text>
+            </Text>
+          )}
           {currentTab === "projects" && (
             <Text>
               <Text bold color="cyan">

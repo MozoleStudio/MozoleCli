@@ -137,7 +137,7 @@ describe("prototype cockpit selection", () => {
       },
     ];
 
-    for (const tab of ["overview", "servers", "projects", "logs"] as const) {
+    for (const tab of ["overview", "servers", "projects", "logs", "workspace", "tools"] as const) {
       const instance = render(
         React.createElement(CockpitApp, {
           projectRoot: path.join(root, "projects/client-a"),
