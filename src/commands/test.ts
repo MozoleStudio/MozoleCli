@@ -1,0 +1,109 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import pc from "picocolors";
+import { auditHtmlA11y } from "../qa/a11y.js";
+import { type CssSource, auditCssContracts } from "../qa/contract.js";
+import { exists, findProjectRoot } from "../utils/fs.js";
+
+export interface TestCommandOptions {
+  type?: "contract" | "a11y" | "all";
+  cwd?: string;
+}
+
+export async function testCommand(options: TestCommandOptions = {}): Promise<void> {
+  const cwd = options.cwd ?? process.cwd();
+  const projectRoot = (await findProjectRoot(cwd)) ?? cwd;
+  const testType = options.type ?? "all";
+
+  let hasFailures = false;
+
+  // 1. PostCSS Design Token Contract Audit
+  if (testType === "contract" || testType === "all") {
+    console.log(pc.cyan(`\n🎨 Running Mozole Design Token Contract Audit in ${projectRoot}...`));
+
+    const cssSources: CssSource[] = [];
+    async function collectCss(dir: string): Promise<void> {
+      if (!(await exists(dir))) return;
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory() && !["node_modules", ".git", "dist", "build"].includes(e.name)) {
+          await collectCss(full);
+        } else if (e.isFile() && e.name.endsWith(".css")) {
+          const css = await fs.readFile(full, "utf8");
+          cssSources.push({ file: path.relative(projectRoot, full), css });
+        }
+      }
+    }
+
+    await collectCss(path.join(projectRoot, "src"));
+
+    if (cssSources.length === 0) {
+      console.log(pc.yellow("  ! No CSS files found in src/"));
+    } else {
+      const result = auditCssContracts(cssSources);
+
+      for (const err of result.errors) {
+        hasFailures = true;
+        console.log(
+          pc.red(`  ✗ [ERROR] ${err.file}:${err.line} (${err.selector}): ${err.message}`),
+        );
+        console.log(pc.dim(`    Rule: ${err.rule} | Value: ${err.value}`));
+      }
+
+      for (const warn of result.warnings) {
+        console.log(
+          pc.yellow(`  ! [WARN] ${warn.file}:${warn.line} (${warn.selector}): ${warn.message}`),
+        );
+      }
+
+      if (result.errors.length === 0) {
+        console.log(
+          pc.green(`  ✓ Design contracts verified across ${cssSources.length} CSS files.`),
+        );
+        if (result.warnings.length > 0) {
+          console.log(pc.yellow(`    (${result.warnings.length} diagnostic warnings)`));
+        }
+      }
+    }
+  }
+
+  // 2. Static HTML & Accessibility Audit
+  if (testType === "a11y" || testType === "all") {
+    console.log(
+      pc.cyan(`\n♿ Running Static A11y & Landmark Hierarchy Audit in ${projectRoot}...`),
+    );
+
+    const htmlSources: { file: string; html: string }[] = [];
+    const indexHtmlPath = path.join(projectRoot, "index.html");
+    if (await exists(indexHtmlPath)) {
+      const html = await fs.readFile(indexHtmlPath, "utf8");
+      htmlSources.push({ file: "index.html", html });
+    }
+
+    if (htmlSources.length === 0) {
+      console.log(
+        pc.gray("  • No static HTML files to audit (framework mode will audit during build)."),
+      );
+    } else {
+      const result = auditHtmlA11y(htmlSources);
+      for (const err of result.errors) {
+        hasFailures = true;
+        console.log(pc.red(`  ✗ [ERROR] ${err.file}:${err.line} (${err.element}): ${err.message}`));
+      }
+      for (const warn of result.warnings) {
+        console.log(
+          pc.yellow(`  ! [WARN] ${warn.file}:${warn.line} (${warn.element}): ${warn.message}`),
+        );
+      }
+      if (result.errors.length === 0) {
+        console.log(pc.green("  ✓ Accessibility landmark hierarchy passed."));
+      }
+    }
+  }
+
+  console.log();
+  if (hasFailures) {
+    throw new Error("Mozole quality test suite detected contract or accessibility violations.");
+  }
+}
