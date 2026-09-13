@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineCommand, runMain } from "citty";
 import { adoptProject } from "./commands/adopt.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -218,14 +220,31 @@ export function runCli(argv = process.argv.slice(2)): Promise<void> {
   return runMain(main, { rawArgs: argv });
 }
 
-// Automatically invoke if executed as the main CLI entrypoint
-const isEntry = Boolean(
-  process.argv[1] &&
-    (process.argv[1].endsWith("/cli.js") ||
-      process.argv[1].endsWith("/cli.ts") ||
-      process.argv[1].endsWith("/mozole")),
-);
+export function isCliEntrypoint(
+  argv1 = process.argv[1],
+  currentModuleUrl = import.meta.url,
+): boolean {
+  if (!argv1) return false;
+  try {
+    const scriptPath = fileURLToPath(currentModuleUrl);
+    if (path.resolve(argv1) === path.resolve(scriptPath)) {
+      return true;
+    }
+  } catch {}
 
-if (isEntry) {
+  const normalized = argv1.replace(/\\/g, "/").toLowerCase();
+  return (
+    normalized.endsWith("/cli.js") ||
+    normalized.endsWith("/cli.ts") ||
+    normalized.endsWith("/mozole") ||
+    normalized.endsWith("/mozole.cmd") ||
+    normalized.endsWith("/mozole.ps1") ||
+    normalized.endsWith("/mozole.exe") ||
+    normalized.endsWith("/mozole.js") ||
+    /(?:^|\/)mozole(?:\.cmd|\.ps1|\.exe)?$/i.test(normalized)
+  );
+}
+
+if (isCliEntrypoint()) {
   runCli();
 }

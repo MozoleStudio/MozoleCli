@@ -186,4 +186,19 @@ describe("CLI Integration Suite", () => {
   it("runs doctor diagnostic command without exceptions", async () => {
     await expect(doctorCommand()).resolves.not.toThrow();
   });
+
+  it("executes CLI router via subprocess printing version and help", async () => {
+    const resVersion = await run(process.execPath, [path.resolve("dist/cli.js"), "--version"], {
+      env: { CONSOLA_LEVEL: "3" },
+    });
+    expect(resVersion.exitCode).toBe(0);
+    expect(resVersion.stdout).toContain("2.0.0-b");
+
+    const resHelp = await run(process.execPath, [path.resolve("dist/cli.js"), "--help"], {
+      env: { CONSOLA_LEVEL: "3" },
+    });
+    expect(resHelp.exitCode).toBe(0);
+    expect(resHelp.stdout).toContain("Mozole Studio");
+    expect(resHelp.stdout).toContain("COMMANDS");
+  });
 });

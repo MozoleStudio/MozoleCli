@@ -38,7 +38,20 @@ export async function atomicWrite(
       encoding: typeof content === "string" ? "utf8" : undefined,
       mode: options.mode,
     });
-    await rename(tempFile, targetPath);
+    try {
+      await rename(tempFile, targetPath);
+    } catch (renameErr) {
+      const code = (renameErr as NodeJS.ErrnoException).code;
+      if (
+        process.platform === "win32" &&
+        (code === "EPERM" || code === "EBUSY" || code === "EEXIST")
+      ) {
+        await rm(targetPath, { force: true }).catch(() => {});
+        await rename(tempFile, targetPath);
+      } else {
+        throw renameErr;
+      }
+    }
   } catch (error) {
     await rm(tempFile, { force: true }).catch(() => {});
     throw error;
