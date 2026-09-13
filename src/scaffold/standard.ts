@@ -14,7 +14,6 @@ export function generateStandardPackageJson(projectName: string): string {
       verify: "mozole verify",
     },
     dependencies: {
-      "@radix-ui/react-dialog": "^1.1.6",
       "@radix-ui/react-slot": "^1.1.2",
       "@react-router/node": "^7.2.0",
       "@react-router/serve": "^7.2.0",

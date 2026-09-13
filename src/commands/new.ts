@@ -6,7 +6,7 @@ import { exists, findPrototypeRoot } from "../utils/fs.js";
 export interface NewProjectOptions {
   name: string;
   flagship?: boolean;
-  backend?: "php" | "node";
+  backend?: "php" | "node" | "none";
   targetDir?: string;
   cwd?: string;
   initGit?: boolean;
@@ -30,18 +30,26 @@ export async function createNewProject(options: NewProjectOptions): Promise<stri
     throw new Error(`Target directory already exists: ${targetDir}`);
   }
 
+  const backend = options.backend ?? "none";
+  const backendLabel =
+    backend === "none"
+      ? pc.green("none (Pure Frontend / Zero-Backend)")
+      : backend === "php"
+        ? pc.yellow("php (Pure PHP 8.1+ Zero-Dependency)")
+        : pc.yellow("node (Native HTTP Node.js API)");
+
   console.log(pc.cyan(`\n⚡ Scaffolding Mozole project: ${pc.bold(name)}`));
   console.log(
     `  Profile: ${options.flagship ? pc.magenta("Flagship Creative (Wouter + Lenis + Canvas)") : pc.blue("Standard Production (React Router 7 + SSG)")}`,
   );
-  console.log(`  Backend: ${pc.yellow(options.backend ?? "php (Pure PHP 8.1+ Zero-Dependency)")}`);
+  console.log(`  Backend: ${backendLabel}`);
   console.log(`  Destination: ${targetDir}\n`);
 
   await scaffoldNewProject({
     targetDir,
     name,
     flagship: options.flagship,
-    backend: options.backend,
+    backend,
     initGit: options.initGit ?? true,
   });
 

@@ -13,7 +13,7 @@ export interface ScaffoldOptions {
   targetDir: string;
   name: string;
   flagship?: boolean;
-  backend?: "php" | "node";
+  backend?: "php" | "node" | "none";
   initGit?: boolean;
 }
 
@@ -22,11 +22,11 @@ export async function scaffoldNewProject(options: ScaffoldOptions): Promise<void
     targetDir,
     name,
     flagship = false,
-    backend = "php",
+    backend = "none",
     initGit: shouldInitGit = true,
   } = options;
-  if (backend !== "php" && backend !== "node") {
-    throw new Error(`Invalid backend '${backend}'. Expected php or node.`);
+  if (backend !== "php" && backend !== "node" && backend !== "none") {
+    throw new Error(`Invalid backend '${backend}'. Expected none, php, or node.`);
   }
 
   if (!isSafeProjectName(name)) {
@@ -57,8 +57,10 @@ export async function scaffoldNewProject(options: ScaffoldOptions): Promise<void
     await scaffoldStandardProject(targetDir, name);
   }
 
-  // 7. Backend API & Security Layer
-  await scaffoldBackend(targetDir, backend);
+  // 7. Backend API & Security Layer (optional)
+  if (backend !== "none") {
+    await scaffoldBackend(targetDir, backend);
+  }
 
   // 8. Initialize Git Repository with Clean Initial Commit
   if (shouldInitGit) {

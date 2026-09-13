@@ -26,7 +26,7 @@ Project development is strictly organized into phases documented in \`docs/phase
 - **Phase 03: Primary Routes & Pages** — Route declarations, static content hierarchy.
 - **Phase 04: Interactive Features & State** — Forms, client interactions, transitions.
 - **Phase 05: Dynamic Animation & Canvas (Flagship)** — Scroll orchestration, WebGL/canvas layers.
-- **Phase 06: Backend Integration & Security** — PHP endpoints, mailer, rate-limiting, honeypot.
+- **Phase 06: Integrations & Security** — Form handling, anti-spam honeypot, security headers, and API endpoints.
 - **Phase 07: Accessibility & WCAG 2.1 AA** — Landmark hierarchy, keyboard traps, screen reader fidelity.
 - **Phase 08: Performance & Core Web Vitals** — Fluid typography, asset optimization, zero layout shift.
 - **Phase 09: Browser & Breakpoint QA** — Headless DOM geometry audit across all media query boundaries.

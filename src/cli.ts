@@ -31,15 +31,15 @@ const newCmd = defineCommand({
     },
     backend: {
       type: "string",
-      description: "Backend runtime: 'php' (default) or 'node'",
-      default: "php",
+      description: "Backend runtime: 'none' (default), 'php', or 'node'",
+      default: "none",
     },
   },
   async run({ args }) {
     await createNewProject({
       name: args.name,
       flagship: args.flagship,
-      backend: (args.backend as "php" | "node") || "php",
+      backend: (args.backend as "php" | "node" | "none") || "none",
     });
   },
 });

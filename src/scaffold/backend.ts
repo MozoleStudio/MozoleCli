@@ -335,15 +335,18 @@ server.listen(PORT, () => {
 
 export async function scaffoldBackend(
   projectRoot: string,
-  type: "php" | "node" = "php",
+  type: "php" | "node" | "none" = "none",
 ): Promise<void> {
+  if (type === "none") {
+    return;
+  }
   if (type === "php") {
     const apiDir = path.join(projectRoot, "api");
     await atomicWrite(path.join(apiDir, "config.php"), generatePhpConfig());
     await atomicWrite(path.join(apiDir, "mailer.php"), generatePhpMailer());
     await atomicWrite(path.join(apiDir, "index.php"), generatePhpIndex());
     await atomicWrite(path.join(apiDir, ".htaccess"), generatePhpSecurityHtaccess());
-  } else {
+  } else if (type === "node") {
     const serverDir = path.join(projectRoot, "server");
     await atomicWrite(path.join(serverDir, "index.mjs"), generateNodeBackend());
   }

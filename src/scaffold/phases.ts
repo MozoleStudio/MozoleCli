@@ -85,14 +85,15 @@ export const PHASES: PhaseDefinition[] = [
   },
   {
     id: "06",
-    name: "Backend Integration & Security",
-    description: "Zero-dependency PHP 8.1+ endpoints, honeypot spam protection, and rate limiting.",
+    name: "Integrations & Security",
+    description:
+      "Form submission handling, anti-spam honeypot, security headers, and optional API endpoints.",
     checklist: [
-      "PHP endpoints responding with valid JSON headers and CORS checks",
-      "Honeypot field stops bot spam without user friction",
-      "IP rate limiting active and bounded by temporary storage window",
-      "Direct file access to config.php denied via .htaccess / security headers",
-      "Input sanitization and email header injection protection active",
+      "Form submissions validated and protected against spam (honeypot or rate limiting)",
+      "Security headers and CORS origins verified",
+      "Input sanitization active on all interactive input fields",
+      "Backend API endpoints (if applicable) or client form handlers respond cleanly",
+      "Sensitive secrets and environment variables protected from client bundle leakage",
     ],
   },
   {

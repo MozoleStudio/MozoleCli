@@ -6,6 +6,7 @@ import { auditHtmlA11y } from "../../src/qa/a11y.js";
 import { auditCssContracts } from "../../src/qa/contract.js";
 import { scaffoldNewProject } from "../../src/scaffold/index.js";
 import { scanProjectForAiTraces } from "../../src/utils/ai-trace.js";
+import { exists } from "../../src/utils/fs.js";
 import { run } from "../../src/utils/process.js";
 
 describe("scaffoldNewProject", () => {
@@ -118,6 +119,29 @@ describe("scaffoldNewProject", () => {
     const indexHtml = await fs.readFile(path.join(projectDir, "index.html"), "utf8");
     const a11yResult = auditHtmlA11y([{ file: "index.html", html: indexHtml }]);
     expect(a11yResult.errors).toEqual([]);
+  });
+
+  it("scaffolds a pure frontend project by default without any backend directories", async () => {
+    const projectDir = path.join(tmpDir, "pure-frontend");
+    await scaffoldNewProject({
+      targetDir: projectDir,
+      name: "pure-frontend",
+      initGit: false,
+    });
+    expect(await exists(path.join(projectDir, "api"))).toBe(false);
+    expect(await exists(path.join(projectDir, "server"))).toBe(false);
+  });
+
+  it("scaffolds a node backend when backend: 'node' is specified", async () => {
+    const projectDir = path.join(tmpDir, "node-site");
+    await scaffoldNewProject({
+      targetDir: projectDir,
+      name: "node-site",
+      backend: "node",
+      initGit: false,
+    });
+    expect(await exists(path.join(projectDir, "api"))).toBe(false);
+    expect(await exists(path.join(projectDir, "server", "index.mjs"))).toBe(true);
   });
 
   it.each([false, true])(
