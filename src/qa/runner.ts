@@ -186,20 +186,22 @@ async function discoverRoutesAndDirectory(
   async function scanHtmlRoutes(dir: string, base: string) {
     if (!(await exists(dir))) return;
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await scanHtmlRoutes(full, `${base}/${entry.name}`);
-      } else if (entry.isFile() && entry.name.endsWith(".html")) {
-        if (entry.name === "__spa-fallback.html") continue;
-        if (entry.name === "index.html") {
-          routes.add(base || "/");
-        } else {
-          const routeName = entry.name.replace(/\.html$/, "");
-          routes.add(`${base}/${routeName}`);
+    await Promise.all(
+      entries.map(async (entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await scanHtmlRoutes(full, `${base}/${entry.name}`);
+        } else if (entry.isFile() && entry.name.endsWith(".html")) {
+          if (entry.name === "__spa-fallback.html") return;
+          if (entry.name === "index.html") {
+            routes.add(base || "/");
+          } else {
+            const routeName = entry.name.replace(/\.html$/, "");
+            routes.add(`${base}/${routeName}`);
+          }
         }
-      }
-    }
+      }),
+    );
   }
 
   await scanHtmlRoutes(staticDir, "");
