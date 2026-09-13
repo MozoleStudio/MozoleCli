@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { unzipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runLiveGeometryProbe } from "../../src/qa/runner.js";
 import { atomicWrite } from "../../src/utils/fs.js";
-import { run } from "../../src/utils/process.js";
 
 describe("Headless Live DOM Geometry & Trace Runner", () => {
   let tmpDir: string;
@@ -126,10 +126,11 @@ describe("Headless Live DOM Geometry & Trace Runner", () => {
     const traceStat = await fs.stat(tracePath);
     expect(traceStat.size).toBeGreaterThan(0);
 
-    // Verify ZERO screenshots inside the trace zip using unzip -l
-    const zipListing = await run("unzip", ["-l", tracePath]);
-    if (zipListing.exitCode === 0) {
-      expect(zipListing.stdout).not.toMatch(/\.(png|jpg|jpeg|webp)/i);
+    // Verify ZERO screenshots inside the trace zip
+    const traceBuffer = await fs.readFile(tracePath);
+    const unzipped = unzipSync(new Uint8Array(traceBuffer));
+    for (const entryName of Object.keys(unzipped)) {
+      expect(entryName).not.toMatch(/\.(png|jpg|jpeg|webp)$/i);
     }
   }, 30_000);
 });

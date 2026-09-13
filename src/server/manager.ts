@@ -40,11 +40,16 @@ class ServerManager {
     const port = await findAvailablePort(5173);
     const recentLogs: string[] = [];
 
-    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    const child = spawn(npmCmd, ["run", "dev", "--", "--port", String(port), "--strictPort"], {
+    const isWindows = process.platform === "win32";
+    const cmd = isWindows ? process.env.ComSpec || "cmd.exe" : "npm";
+    const args = isWindows
+      ? ["/d", "/s", "/c", "npm", "run", "dev", "--", "--port", String(port), "--strictPort"]
+      : ["run", "dev", "--", "--port", String(port), "--strictPort"];
+
+    const child = spawn(cmd, args, {
       cwd: projectPath,
       shell: false,
-      detached: process.platform !== "win32",
+      detached: !isWindows,
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, PORT: String(port) },
     });

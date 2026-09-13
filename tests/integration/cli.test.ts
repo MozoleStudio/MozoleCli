@@ -11,6 +11,7 @@ import { repomapCommand } from "../../src/commands/repomap.js";
 import { testCommand } from "../../src/commands/test.js";
 import { exists } from "../../src/utils/fs.js";
 import { run } from "../../src/utils/process.js";
+import { CLI_VERSION } from "../../src/version.js";
 
 describe("CLI Integration Suite", () => {
   let tmpDir: string;
@@ -201,7 +202,7 @@ describe("CLI Integration Suite", () => {
       env: { CONSOLA_LEVEL: "3" },
     });
     expect(resVersion.exitCode).toBe(0);
-    expect(resVersion.stdout).toContain("2.1.1");
+    expect(resVersion.stdout).toContain(CLI_VERSION);
 
     const resHelp = await run(process.execPath, [cliDistPath, "--help"], {
       env: { CONSOLA_LEVEL: "3" },

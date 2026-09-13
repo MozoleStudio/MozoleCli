@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import pc from "picocolors";
 import { exists } from "./fs.js";
@@ -54,6 +55,35 @@ function getWin32Candidates(): string[] {
   return list;
 }
 
+async function getWin32RegistryPaths(): Promise<string[]> {
+  if (process.platform !== "win32") return [];
+  const browserExeNames = ["chrome.exe", "msedge.exe", "brave.exe", "chromium.exe"];
+  const paths: string[] = [];
+  for (const exe of browserExeNames) {
+    for (const hive of ["HKLM", "HKCU"]) {
+      try {
+        const res = await run(
+          "reg.exe",
+          [
+            "query",
+            `${hive}\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${exe}`,
+            "/ve",
+          ],
+          { timeoutMs: 1500 },
+        );
+        if (res.exitCode === 0 && res.stdout) {
+          const match = res.stdout.match(/REG_SZ\s+(.+)$/m);
+          if (match?.[1]) {
+            const trimmed = match[1].trim().replace(/^"|"$/g, "");
+            if (trimmed) paths.push(trimmed);
+          }
+        }
+      } catch {}
+    }
+  }
+  return paths;
+}
+
 export async function findLocalChromium(): Promise<BrowserInfo | null> {
   const envCandidates = [
     process.env.BRAVE_PATH,
@@ -65,7 +95,7 @@ export async function findLocalChromium(): Promise<BrowserInfo | null> {
     process.platform === "darwin"
       ? DARWIN_CANDIDATES
       : process.platform === "win32"
-        ? getWin32Candidates()
+        ? [...getWin32Candidates(), ...(await getWin32RegistryPaths())]
         : LINUX_CANDIDATES;
 
   const candidates = [...envCandidates, ...platformCandidates];
@@ -86,6 +116,23 @@ export async function findLocalChromium(): Promise<BrowserInfo | null> {
           version = res.stdout.trim();
         }
       } catch {}
+
+      if (!version && process.platform === "win32") {
+        try {
+          const ps = await run(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-Command",
+              `(Get-ItemProperty '${bin.replace(/'/g, "''")}').VersionInfo.ProductVersion`,
+            ],
+            { timeoutMs: 2000 },
+          );
+          if (ps.exitCode === 0 && ps.stdout.trim()) {
+            version = ps.stdout.trim();
+          }
+        } catch {}
+      }
 
       const base = path.basename(bin).toLowerCase();
       let name = "Chromium";
@@ -116,12 +163,23 @@ export async function ensureChromiumBrowser(): Promise<BrowserInfo> {
   );
 
   // Per policy: test coverage takes precedence over disk space. Install playwright chromium
-  const playwrightCli = path.resolve("node_modules/playwright-core/cli.js");
-  let installRes = await run(process.execPath, [playwrightCli, "install", "chromium"], {
-    timeoutMs: 120000,
-  });
+  const require = createRequire(import.meta.url);
+  let playwrightCli: string | null = null;
+  try {
+    playwrightCli = require.resolve("playwright-core/cli.js");
+  } catch {
+    const candidate = path.resolve("node_modules/playwright-core/cli.js");
+    if (await exists(candidate)) playwrightCli = candidate;
+  }
 
-  if (installRes.exitCode !== 0) {
+  let installRes: Awaited<ReturnType<typeof run>> | null = null;
+  if (playwrightCli && (await exists(playwrightCli))) {
+    installRes = await run(process.execPath, [playwrightCli, "install", "chromium"], {
+      timeoutMs: 120000,
+    });
+  }
+
+  if (!installRes || installRes.exitCode !== 0) {
     // Fallback: try npx
     installRes = await run("npx", ["playwright-core", "install", "chromium"], {
       timeoutMs: 120000,

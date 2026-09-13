@@ -191,35 +191,41 @@ export function isSafeProjectName(name: string): boolean {
   return /^[a-z0-9][a-z0-9._-]*$/i.test(name);
 }
 
+export async function isPrototypeRoot(dir: string): Promise<boolean> {
+  const configPath = path.join(dir, "mozole.config.json");
+  if (await exists(configPath)) {
+    try {
+      const config = JSON.parse(await readFile(configPath, "utf8"));
+      if (!config.projectsDir || config.projectsDir === "projects") return true;
+    } catch {
+      return true;
+    }
+  }
+  const manifestPath = path.join(dir, "package.json");
+  if (await exists(manifestPath)) {
+    try {
+      const pkg = JSON.parse(await readFile(manifestPath, "utf8"));
+      if (
+        pkg.mozolePrototype === true ||
+        pkg["mozole-prototype"] === true ||
+        Array.isArray(pkg.workspaces) ||
+        Boolean(pkg.workspaces?.packages)
+      ) {
+        return true;
+      }
+    } catch {}
+  }
+  const projectsPath = path.join(dir, "projects");
+  if ((await exists(projectsPath)) && (await isDirectory(projectsPath))) {
+    return true;
+  }
+  return false;
+}
+
 export async function findPrototypeRoot(startDir = process.cwd()): Promise<string | null> {
   let current = path.resolve(startDir);
   while (true) {
-    const configPath = path.join(current, "mozole.config.json");
-    if (await exists(configPath)) {
-      try {
-        const config = JSON.parse(await readFile(configPath, "utf8"));
-        if (!config.projectsDir || config.projectsDir === "projects") return current;
-      } catch {
-        return current;
-      }
-      return current;
-    }
-    const manifestPath = path.join(current, "package.json");
-    if (await exists(manifestPath)) {
-      try {
-        const pkg = JSON.parse(await readFile(manifestPath, "utf8"));
-        if (
-          pkg.mozolePrototype === true ||
-          pkg["mozole-prototype"] === true ||
-          Array.isArray(pkg.workspaces) ||
-          Boolean(pkg.workspaces?.packages)
-        ) {
-          return current;
-        }
-      } catch {}
-    }
-    const projectsPath = path.join(current, "projects");
-    if (await exists(projectsPath)) {
+    if (await isPrototypeRoot(current)) {
       return current;
     }
     const parent = path.dirname(current);
@@ -344,9 +350,14 @@ export async function findProjectRoot(startDir = process.cwd()): Promise<string 
   let current = path.resolve(startDir);
   while (true) {
     const configPath = path.join(current, ".mozole", "project.json");
-    const agentsPath = path.join(current, "AGENTS.md");
-    if ((await exists(configPath)) || (await exists(agentsPath))) {
+    if (await exists(configPath)) {
       return current;
+    }
+    const agentsPath = path.join(current, "AGENTS.md");
+    if (await exists(agentsPath)) {
+      if (!(await isPrototypeRoot(current))) {
+        return current;
+      }
     }
     const parent = path.dirname(current);
     if (parent === current) {

@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const activeChildren = new Set<number>();
 let cleanupRegistered = false;
@@ -63,6 +65,36 @@ export function terminateProcess(pid: number | undefined, force = false): void {
   }
 }
 
+function isBatchExecutable(command: string, cwd?: string): boolean {
+  if (process.platform !== "win32") return false;
+  const lower = command.toLowerCase();
+  if (lower.endsWith(".exe")) return false;
+  if (lower.endsWith(".cmd") || lower.endsWith(".bat") || command === "npm" || command === "npx") {
+    return true;
+  }
+  const workDir = cwd ?? process.cwd();
+  const localBin = path.join(workDir, "node_modules", ".bin");
+  if (
+    fs.existsSync(path.join(localBin, `${command}.cmd`)) ||
+    fs.existsSync(path.join(localBin, `${command}.bat`))
+  ) {
+    return true;
+  }
+  const pathDirs = (process.env.PATH || "").split(path.delimiter);
+  for (const dir of pathDirs) {
+    if (
+      fs.existsSync(path.join(dir, `${command}.cmd`)) ||
+      fs.existsSync(path.join(dir, `${command}.bat`))
+    ) {
+      return true;
+    }
+    if (fs.existsSync(path.join(dir, `${command}.exe`))) {
+      return false;
+    }
+  }
+  return false;
+}
+
 export async function run(
   command: string,
   args: string[],
@@ -72,22 +104,26 @@ export async function run(
   const startTime = Date.now();
 
   const isWindows = process.platform === "win32";
-  const finalCommand =
-    isWindows && !command.endsWith(".exe") && !command.endsWith(".cmd") && !command.endsWith(".bat")
-      ? command === "npm" || command === "npx"
-        ? `${command}.cmd`
-        : command
-      : command;
+  const isBatch = isBatchExecutable(command, options.cwd);
+
+  const finalCommand = isBatch ? process.env.ComSpec || "cmd.exe" : command;
+  const finalArgs = isBatch ? ["/d", "/s", "/c", command, ...args] : args;
 
   return new Promise((resolve, reject) => {
-    const child = spawn(finalCommand, args, {
-      cwd: options.cwd ?? process.cwd(),
-      env: { ...process.env, ...options.env },
-      shell: false,
-      windowsHide: true,
-      detached: !isWindows,
-      stdio: options.stdio ?? "pipe",
-    });
+    let child: ChildProcess;
+    try {
+      child = spawn(finalCommand, finalArgs, {
+        cwd: options.cwd ?? process.cwd(),
+        env: { ...process.env, ...options.env },
+        shell: false,
+        windowsHide: true,
+        detached: !isWindows,
+        stdio: options.stdio ?? "pipe",
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
     trackProcess(child);
 
     let stdout = "";

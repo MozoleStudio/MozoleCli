@@ -12,7 +12,18 @@ export async function isGitInstalled(): Promise<boolean> {
 }
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
-  return exists(path.join(cwd, ".git"));
+  if (await exists(path.join(cwd, ".git"))) {
+    return true;
+  }
+  try {
+    const res = await run("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      timeoutMs: 3000,
+    });
+    return res.exitCode === 0 && res.stdout.trim() === "true";
+  } catch {
+    return false;
+  }
 }
 
 export async function initGit(
