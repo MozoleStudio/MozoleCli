@@ -6,7 +6,12 @@ import { atomicWrite } from "../../src/utils/fs.js";
 import { run } from "../../src/utils/process.js";
 import { useSecurityDirectory } from "./helpers.js";
 
-describe("security: generated PHP mailer", () => {
+const hasPhp = await run("php", ["-v"]).then(
+  (result) => result.exitCode === 0,
+  () => false,
+);
+
+describe.skipIf(!hasPhp)("security: generated PHP mailer", () => {
   const directory = useSecurityDirectory();
   beforeAll(async () => {
     const version = await run("php", ["-n", "-r", "echo PHP_VERSION_ID;"], { timeoutMs: 3000 });

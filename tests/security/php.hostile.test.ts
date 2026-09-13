@@ -10,7 +10,12 @@ import { useSecurityDirectory } from "./helpers.js";
 const valid = { name: "İpek", email: "ipek@example.com", subject: "Contact", message: "Merhaba" };
 const trusted = { HTTP_ORIGIN: "https://mozole.studio" };
 
-describe("security: generated PHP request boundary", () => {
+const hasPhp = await run("php", ["-v"]).then(
+  (result) => result.exitCode === 0,
+  () => false,
+);
+
+describe.skipIf(!hasPhp)("security: generated PHP request boundary", () => {
   const directory = useSecurityDirectory();
   // Missing PHP is a visible setup failure, never silently skipped security coverage.
   beforeAll(async () => {
