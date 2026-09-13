@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pc from "picocolors";
 import { scanProjectForAiTraces } from "../utils/ai-trace.js";
-import { findProjectRoot } from "../utils/fs.js";
+import { exists, findNodeModulesFile, findProjectRoot } from "../utils/fs.js";
 import { run } from "../utils/process.js";
 import { testCommand } from "./test.js";
 
@@ -55,14 +55,42 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
     });
   }
 
+  // Compute hoisted node_modules/.bin paths for monorepo workspaces
+  const binDirs: string[] = [];
+  let cur = path.resolve(projectRoot);
+  while (true) {
+    const binCandidate = path.join(cur, "node_modules", ".bin");
+    if (await exists(binCandidate)) {
+      binDirs.push(binCandidate);
+    }
+    const par = path.dirname(cur);
+    if (par === cur) break;
+    cur = par;
+  }
+  const pathSep = process.platform === "win32" ? ";" : ":";
+  const augmentedEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH:
+      binDirs.length > 0
+        ? `${binDirs.join(pathSep)}${pathSep}${process.env.PATH ?? ""}`
+        : process.env.PATH,
+  };
+
   // Stage 2: Biome Lint & Format Check
   console.log(pc.bold("\n2. Running Biome linter and formatter..."));
   try {
-    const biomeRes = await run(
-      process.execPath,
-      [path.join(projectRoot, "node_modules/@biomejs/biome/bin/biome"), "check", "src"],
-      { cwd: projectRoot },
-    );
+    const biomeBin =
+      (await findNodeModulesFile(projectRoot, "@biomejs/biome/bin/biome")) ??
+      path.join(projectRoot, "node_modules/@biomejs/biome/bin/biome");
+    const targetDir = (await exists(path.join(projectRoot, "src")))
+      ? "src"
+      : (await exists(path.join(projectRoot, "app")))
+        ? "app"
+        : ".";
+    const biomeRes = await run(process.execPath, [biomeBin, "check", targetDir], {
+      cwd: projectRoot,
+      env: augmentedEnv,
+    });
     if (biomeRes.exitCode === 0) {
       stages.push({ name: "Biome Code Standards", success: true });
       console.log(pc.green("  ✓ Biome lint and formatting clean."));
@@ -87,13 +115,12 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
   console.log(pc.bold("\n3. Running TypeScript typecheck..."));
   try {
     const pkg = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
+    const tscBin =
+      (await findNodeModulesFile(projectRoot, "typescript/bin/tsc")) ??
+      path.join(projectRoot, "node_modules/typescript/bin/tsc");
     const tscRes = pkg.scripts?.typecheck
-      ? await run("npm", ["run", "typecheck"], { cwd: projectRoot })
-      : await run(
-          process.execPath,
-          [path.join(projectRoot, "node_modules/typescript/bin/tsc"), "--noEmit"],
-          { cwd: projectRoot },
-        );
+      ? await run("npm", ["run", "typecheck"], { cwd: projectRoot, env: augmentedEnv })
+      : await run(process.execPath, [tscBin, "--noEmit"], { cwd: projectRoot, env: augmentedEnv });
     if (tscRes.exitCode === 0) {
       stages.push({ name: "TypeScript Typecheck", success: true });
       console.log(pc.green("  ✓ TypeScript compiled with zero type errors."));
@@ -116,7 +143,7 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
   if (!options.skipBuild) {
     console.log(pc.bold("\n4. Building production output..."));
     try {
-      const build = await run("npm", ["run", "build"], { cwd: projectRoot });
+      const build = await run("npm", ["run", "build"], { cwd: projectRoot, env: augmentedEnv });
       stages.push({
         name: "Production Build",
         success: build.exitCode === 0,

@@ -181,3 +181,22 @@ export async function findProjectRoot(startDir = process.cwd()): Promise<string 
   }
   return null;
 }
+
+export async function findNodeModulesFile(
+  startDir: string,
+  relativeSubpath: string,
+): Promise<string | null> {
+  let current = path.resolve(startDir);
+  while (true) {
+    const candidate = path.join(current, "node_modules", relativeSubpath);
+    if (await exists(candidate)) {
+      return candidate;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return null;
+}
