@@ -260,29 +260,31 @@ export async function discoverWorkspaceProjects(
           ? pkg.workspaces.packages
           : [];
 
-      for (const pattern of ws) {
-        if (typeof pattern !== "string") continue;
-        if (pattern.includes("*")) {
-          const base = pattern.replace(/\/\*.*$/, "");
-          const baseDir = path.join(root, base);
-          if (await exists(baseDir)) {
-            const entries = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
-            for (const entry of entries) {
-              if (entry.isDirectory()) {
-                const sub = path.join(baseDir, entry.name);
-                const rel = path.relative(root, sub).split(path.sep).join("/");
-                projects.set(rel, { name: rel, path: sub, relative: rel });
+      await Promise.all(
+        ws.map(async (pattern: unknown) => {
+          if (typeof pattern !== "string") return;
+          if (pattern.includes("*")) {
+            const base = pattern.replace(/\/\*.*$/, "");
+            const baseDir = path.join(root, base);
+            if (await exists(baseDir)) {
+              const entries = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
+              for (const entry of entries) {
+                if (entry.isDirectory()) {
+                  const sub = path.join(baseDir, entry.name);
+                  const rel = path.relative(root, sub).split(path.sep).join("/");
+                  projects.set(rel, { name: rel, path: sub, relative: rel });
+                }
               }
             }
+          } else {
+            const target = path.join(root, pattern);
+            if ((await exists(target)) && (await isDirectory(target))) {
+              const rel = path.relative(root, target).split(path.sep).join("/");
+              projects.set(rel, { name: rel, path: target, relative: rel });
+            }
           }
-        } else {
-          const target = path.join(root, pattern);
-          if ((await exists(target)) && (await isDirectory(target))) {
-            const rel = path.relative(root, target).split(path.sep).join("/");
-            projects.set(rel, { name: rel, path: target, relative: rel });
-          }
-        }
-      }
+        }),
+      );
     } catch {}
   }
 
@@ -317,30 +319,37 @@ export async function discoverWorkspaceProjects(
     ]);
 
     const topEntries = await readdir(root, { withFileTypes: true }).catch(() => []);
-    for (const top of topEntries) {
-      if (!top.isDirectory() || ignored.has(top.name) || top.name.startsWith(".")) continue;
-      const topPath = path.join(root, top.name);
-      if (
-        (await exists(path.join(topPath, "package.json"))) ||
-        (await exists(path.join(topPath, "AGENTS.md")))
-      ) {
-        const rel = top.name;
-        projects.set(rel, { name: rel, path: topPath, relative: rel });
-        continue;
-      }
-      const subEntries = await readdir(topPath, { withFileTypes: true }).catch(() => []);
-      for (const sub of subEntries) {
-        if (!sub.isDirectory() || ignored.has(sub.name) || sub.name.startsWith(".")) continue;
-        const subPath = path.join(topPath, sub.name);
-        if (
-          (await exists(path.join(subPath, "package.json"))) ||
-          (await exists(path.join(subPath, "AGENTS.md")))
-        ) {
-          const rel = `${top.name}/${sub.name}`;
-          projects.set(rel, { name: rel, path: subPath, relative: rel });
+    await Promise.all(
+      topEntries.map(async (top) => {
+        if (!top.isDirectory() || ignored.has(top.name) || top.name.startsWith(".")) return;
+        const topPath = path.join(root, top.name);
+        const [pkgExists, agentsExists] = await Promise.all([
+          exists(path.join(topPath, "package.json")),
+          exists(path.join(topPath, "AGENTS.md")),
+        ]);
+        if (pkgExists || agentsExists) {
+          const rel = top.name;
+          projects.set(rel, { name: rel, path: topPath, relative: rel });
+          return;
         }
-      }
-    }
+
+        const subEntries = await readdir(topPath, { withFileTypes: true }).catch(() => []);
+        await Promise.all(
+          subEntries.map(async (sub) => {
+            if (!sub.isDirectory() || ignored.has(sub.name) || sub.name.startsWith(".")) return;
+            const subPath = path.join(topPath, sub.name);
+            const [subPkgExists, subAgentsExists] = await Promise.all([
+              exists(path.join(subPath, "package.json")),
+              exists(path.join(subPath, "AGENTS.md")),
+            ]);
+            if (subPkgExists || subAgentsExists) {
+              const rel = `${top.name}/${sub.name}`;
+              projects.set(rel, { name: rel, path: subPath, relative: rel });
+            }
+          }),
+        );
+      }),
+    );
   }
 
   return Array.from(projects.values()).sort((a, b) => a.name.localeCompare(b.name));

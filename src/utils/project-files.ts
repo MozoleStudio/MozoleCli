@@ -68,20 +68,29 @@ export async function regularFiles(root: string): Promise<string[]> {
     : normRealRoot + path.sep;
 
   const files: string[] = [];
-  async function walk(dir: string, prefix = "") {
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
-      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const full = path.join(dir, entry.name);
-      if (entry.isSymbolicLink()) {
-        const real = await realpath(full).catch(() => null);
-        const normReal = isWindows ? real?.toLowerCase() : real;
-        if (!normReal || (normReal !== normRealRoot && !normReal.startsWith(normRealRootPrefix))) {
-          throw new Error(`Symlink not allowed in input: ${rel}`);
+  async function walk(dir: string, prefix = ""): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    await Promise.all(
+      entries.map(async (entry) => {
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const full = path.join(dir, entry.name);
+        if (entry.isSymbolicLink()) {
+          const real = await realpath(full).catch(() => null);
+          const normReal = isWindows ? real?.toLowerCase() : real;
+          if (
+            !normReal ||
+            (normReal !== normRealRoot && !normReal.startsWith(normRealRootPrefix))
+          ) {
+            throw new Error(`Symlink not allowed in input: ${rel}`);
+          }
         }
-      }
-      if (entry.isDirectory()) await walk(full, rel);
-      else if (entry.isFile()) files.push(rel);
-    }
+        if (entry.isDirectory()) {
+          await walk(full, rel);
+        } else if (entry.isFile()) {
+          files.push(rel);
+        }
+      }),
+    );
   }
   await walk(resolvedRoot);
   return files.sort();

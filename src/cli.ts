@@ -2,19 +2,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand, runMain } from "citty";
-import { addComponents } from "./commands/add.js";
-import { adoptProject } from "./commands/adopt.js";
-import { optimizeAssets } from "./commands/assets.js";
-import { enableBackend } from "./commands/backend.js";
-import { doctorCommand } from "./commands/doctor.js";
-import { createNewProject } from "./commands/new.js";
-import { phaseCommand } from "./commands/phase.js";
-import { prototypeInit } from "./commands/prototype.js";
-import { createRelease } from "./commands/release.js";
-import { repomapCommand } from "./commands/repomap.js";
-import { testCommand } from "./commands/test.js";
-import { uiCommand } from "./commands/ui.js";
-import { verifyCommand } from "./commands/verify.js";
 import { CLI_VERSION } from "./version.js";
 
 const newCmd = defineCommand({
@@ -40,6 +27,7 @@ const newCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { createNewProject } = await import("./commands/new.js");
     await createNewProject({
       name: args.name,
       flagship: args.flagship,
@@ -60,6 +48,7 @@ const addCmd = defineCommand({
     path: { type: "string", description: "Project directory" },
   },
   async run({ args }) {
+    const { addComponents } = await import("./commands/add.js");
     await addComponents({ components: args.component, list: args.list, cwd: args.path });
   },
 });
@@ -79,6 +68,7 @@ const assetsCmd = defineCommand({
     base: { type: "string", default: "/", description: "Deployment base path, e.g. /client/" },
   },
   async run({ args }) {
+    const { optimizeAssets } = await import("./commands/assets.js");
     await optimizeAssets({
       cwd: args.path,
       input: args.input,
@@ -104,6 +94,7 @@ const releaseCmd = defineCommand({
     "skip-build": { type: "boolean", default: false, description: "Package existing build output" },
   },
   async run({ args }) {
+    const { createRelease } = await import("./commands/release.js");
     await createRelease({
       cwd: args.path,
       from: args.from,
@@ -128,6 +119,7 @@ const prototypeCmd = defineCommand({
     },
   },
   async run() {
+    const { prototypeInit } = await import("./commands/prototype.js");
     await prototypeInit();
   },
 });
@@ -148,6 +140,7 @@ const adoptCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { adoptProject } = await import("./commands/adopt.js");
     await adoptProject({
       targetDir: args.path,
       flagship: args.flagship || undefined,
@@ -163,6 +156,7 @@ const backendCmd = defineCommand({
     path: { type: "string", description: "Project directory" },
   },
   async run({ args }) {
+    const { enableBackend } = await import("./commands/backend.js");
     await enableBackend({ runtime: args.runtime, targetDir: args.path });
   },
 });
@@ -186,6 +180,7 @@ const phaseCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { phaseCommand } = await import("./commands/phase.js");
     await phaseCommand({
       action: (args.action as "status" | "next" | "reopen") || "status",
       phaseId: args.id,
@@ -207,6 +202,7 @@ const repomapCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { repomapCommand } = await import("./commands/repomap.js");
     await repomapCommand({
       action: (args.action as "sync" | "check") || "sync",
     });
@@ -227,6 +223,7 @@ const testCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { testCommand } = await import("./commands/test.js");
     await testCommand({
       type: (args.type as "contract" | "a11y" | "probe" | "all") || "all",
     });
@@ -248,6 +245,7 @@ const verifyCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { verifyCommand } = await import("./commands/verify.js");
     const passed = await verifyCommand({ withProbe: Boolean(args.probe) });
     if (!passed) {
       process.exit(1);
@@ -261,6 +259,7 @@ const doctorCmd = defineCommand({
     description: "Diagnose local system environment, runtimes, and network ports",
   },
   async run() {
+    const { doctorCommand } = await import("./commands/doctor.js");
     await doctorCommand();
   },
 });
@@ -286,6 +285,7 @@ const uiCmd = defineCommand({
     },
   },
   async run({ args }) {
+    const { uiCommand } = await import("./commands/ui.js");
     await uiCommand({
       project: args.project,
       action: args.action,
@@ -322,6 +322,7 @@ export const main = defineCommand({
   async run({ rawArgs }) {
     // If run without arguments, launch the interactive UI cockpit
     if (rawArgs.length === 0) {
+      const { uiCommand } = await import("./commands/ui.js");
       await uiCommand();
     }
   },

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import pc from "picocolors";
 import { auditHtmlA11y } from "../qa/a11y.js";
-import { type CssSource, auditCssContracts } from "../qa/contract.js";
+import { type CssSource, auditCssContractsAsync } from "../qa/contract.js";
 import { runLiveGeometryProbe } from "../qa/runner.js";
 import { exists, findProjectRoot } from "../utils/fs.js";
 
@@ -25,27 +25,31 @@ export async function testCommand(options: TestCommandOptions = {}): Promise<voi
   if (testType === "contract" || testType === "all") {
     console.log(pc.cyan(`\n🎨 Running Mozole Design Token Contract Audit in ${projectRoot}...`));
 
-    const cssSources: CssSource[] = [];
-    async function collectCss(dir: string): Promise<void> {
-      if (!(await exists(dir))) return;
+    async function collectCss(dir: string): Promise<CssSource[]> {
+      if (!(await exists(dir))) return [];
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const e of entries) {
-        const full = path.join(dir, e.name);
-        if (e.isDirectory() && !["node_modules", ".git", "dist", "build"].includes(e.name)) {
-          await collectCss(full);
-        } else if (e.isFile() && e.name.endsWith(".css")) {
-          const css = await fs.readFile(full, "utf8");
-          cssSources.push({ file: path.relative(projectRoot, full), css });
-        }
-      }
+      const results = await Promise.all(
+        entries.map(async (e) => {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory() && !["node_modules", ".git", "dist", "build"].includes(e.name)) {
+            return collectCss(full);
+          }
+          if (e.isFile() && e.name.endsWith(".css")) {
+            const css = await fs.readFile(full, "utf8");
+            return [{ file: path.relative(projectRoot, full), css }];
+          }
+          return [];
+        }),
+      );
+      return results.flat();
     }
 
-    await collectCss(path.join(projectRoot, "src"));
+    const cssSources = await collectCss(path.join(projectRoot, "src"));
 
     if (cssSources.length === 0) {
       console.log(pc.yellow("  ! No CSS files found in src/"));
     } else {
-      const result = auditCssContracts(cssSources);
+      const result = await auditCssContractsAsync(cssSources);
 
       for (const err of result.errors) {
         hasFailures = true;
@@ -78,26 +82,31 @@ export async function testCommand(options: TestCommandOptions = {}): Promise<voi
       pc.cyan(`\n♿ Running Static A11y & Landmark Hierarchy Audit in ${projectRoot}...`),
     );
 
-    const htmlSources: { file: string; html: string }[] = [];
-    async function collectHtml(dir: string): Promise<void> {
-      if (!(await exists(dir))) return;
-      for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) await collectHtml(full);
-        else if (
-          entry.isFile() &&
-          entry.name.endsWith(".html") &&
-          entry.name !== "__spa-fallback.html"
-        ) {
-          htmlSources.push({
-            file: path.relative(projectRoot, full),
-            html: await fs.readFile(full, "utf8"),
-          });
-        }
-      }
+    async function collectHtml(dir: string): Promise<{ file: string; html: string }[]> {
+      if (!(await exists(dir))) return [];
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const results = await Promise.all(
+        entries.map(async (entry) => {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) return collectHtml(full);
+          if (
+            entry.isFile() &&
+            entry.name.endsWith(".html") &&
+            entry.name !== "__spa-fallback.html"
+          ) {
+            const html = await fs.readFile(full, "utf8");
+            return [{ file: path.relative(projectRoot, full), html }];
+          }
+          return [];
+        }),
+      );
+      return results.flat();
     }
-    await collectHtml(path.join(projectRoot, "build", "client"));
-    if (htmlSources.length === 0) await collectHtml(path.join(projectRoot, "dist"));
+
+    let htmlSources = await collectHtml(path.join(projectRoot, "build", "client"));
+    if (htmlSources.length === 0) {
+      htmlSources = await collectHtml(path.join(projectRoot, "dist"));
+    }
     const indexHtmlPath = path.join(projectRoot, "index.html");
     if (htmlSources.length === 0 && (await exists(indexHtmlPath))) {
       const html = await fs.readFile(indexHtmlPath, "utf8");
