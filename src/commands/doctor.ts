@@ -79,8 +79,12 @@ export async function doctorCommand(): Promise<void> {
 
   // 5. Ports Check
   console.log(pc.bold("\nNetwork Port Availability:"));
-  for (const port of [5173, 3000, 8080]) {
-    const available = await isPortAvailable(port);
+  const ports = [5173, 3000, 8080];
+  const portAvailability = await Promise.all(ports.map((port) => isPortAvailable(port)));
+
+  for (let i = 0; i < ports.length; i++) {
+    const port = ports[i];
+    const available = portAvailability[i];
     if (available) {
       console.log(pc.green(`  ✓ Port ${port}: Available`));
     } else {
