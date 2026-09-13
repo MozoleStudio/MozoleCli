@@ -10,6 +10,7 @@ import { generateFlagshipPackageJson } from "../scaffold/flagship.js";
 import { generateStandardPackageJson } from "../scaffold/standard.js";
 import { linkWorkflowPolicies, scaffoldWorkflow } from "../scaffold/workflow.js";
 import { atomicWrite, exists, writeFiles } from "../utils/fs.js";
+import { CLI_VERSION } from "../version.js";
 
 export interface PrototypeInitOptions {
   cwd?: string;
@@ -61,7 +62,7 @@ export async function prototypeInit(options: PrototypeInitOptions = {}): Promise
   await atomicWrite(
     configPath,
     JSON.stringify(
-      { ...config, version: "2.0.0", name, projectsDir: "projects", defaultBackend: "none" },
+      { ...config, version: CLI_VERSION, name, projectsDir: "projects", defaultBackend: "none" },
       null,
       2,
     ),

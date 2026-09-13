@@ -1,6 +1,6 @@
 {
   "name": "@mozole/cli",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Agentic project generator and development cockpit for Mozole Studio",
   "type": "module",
   "bin": {
@@ -10,6 +10,28 @@
     "dist",
     "README.md",
     "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mozolestudio/MozoleCli.git"
+  },
+  "homepage": "https://github.com/mozolestudio/MozoleCli#readme",
+  "bugs": {
+    "url": "https://github.com/mozolestudio/MozoleCli/issues"
+  },
+  "keywords": [
+    "mozole",
+    "cli",
+    "scaffold",
+    "generator",
+    "react",
+    "tailwind",
+    "vite",
+    "wouter",
+    "php"
   ],
   "engines": {
     "node": ">=20.9.0"
@@ -21,7 +43,8 @@
     "format": "biome format --write src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "biome check src tests && tsc --noEmit && npm run build && vitest run"
+    "verify": "biome check src tests && tsc --noEmit && npm run build && vitest run",
+    "prepublishOnly": "npm run verify"
   },
   "dependencies": {
     "citty": "^0.1.6",
