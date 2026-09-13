@@ -192,7 +192,7 @@ describe("CLI Integration Suite", () => {
       env: { CONSOLA_LEVEL: "3" },
     });
     expect(resVersion.exitCode).toBe(0);
-    expect(resVersion.stdout).toContain("2.0.0-b");
+    expect(resVersion.stdout).toContain("2.0.0");
 
     const resHelp = await run(process.execPath, [path.resolve("dist/cli.js"), "--help"], {
       env: { CONSOLA_LEVEL: "3" },
