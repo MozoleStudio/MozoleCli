@@ -82,6 +82,10 @@ describe("scaffoldNewProject", () => {
     // 5. Zero AI Trace Check across entire project
     const traces = await scanProjectForAiTraces(projectDir);
     expect(traces).toEqual([]);
+    const pkg = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
+    expect(pkg.dependencies["@radix-ui/react-dialog"]).toBeDefined();
+    expect(pkg.dependencies["@radix-ui/react-slot"]).toBeDefined();
+
     const routerConfig = await fs.readFile(path.join(projectDir, "react-router.config.ts"), "utf8");
     expect(routerConfig).toContain('appDirectory: "src"');
     expect(routerConfig).toContain("ssr: false");
