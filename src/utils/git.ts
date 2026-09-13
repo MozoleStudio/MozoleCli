@@ -61,10 +61,11 @@ export async function stageAndCommit(
   try {
     const addResult = await run("git", ["add", "."], { cwd });
     if (addResult.exitCode !== 0) {
-      outcome = { success: false, output: addResult.stderr };
+      outcome = { success: false, output: addResult.stderr || "git add failed" };
     } else {
       const result = await run("git", ["commit", "-m", message], { cwd });
-      outcome = { success: result.exitCode === 0, output: result.stdout + result.stderr };
+      const output = `${result.stdout}\n${result.stderr}`.trim();
+      outcome = { success: result.exitCode === 0, output };
     }
   } catch (error) {
     outcome = { success: false, output: String(error) };

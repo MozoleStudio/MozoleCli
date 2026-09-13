@@ -55,6 +55,7 @@ describe("CLI Integration Suite", () => {
   it("restores phase content and staged changes when a commit hook rejects advancement", async () => {
     await adoptProject({ targetDir: tmpDir });
     await run("git", ["init"], { cwd: tmpDir });
+    await run("git", ["config", "core.hooksPath", ".git/hooks"], { cwd: tmpDir });
     await run("git", ["config", "user.name", "Test User"], { cwd: tmpDir });
     await run("git", ["config", "user.email", "test@example.com"], { cwd: tmpDir });
     await fs.writeFile(path.join(tmpDir, "staged.txt"), "keep staged");
