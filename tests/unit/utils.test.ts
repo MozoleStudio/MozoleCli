@@ -88,9 +88,13 @@ describe("Phase 1 Utilities", () => {
         const found = await discoverWorkspaceProjects(dir);
         expect(found.length).toBe(3);
         const names = found.map((p) => p.name);
-        expect(names).toContain("apps/web");
-        expect(names).toContain("apps/admin");
-        expect(names).toContain("packages/core");
+        expect(names).toContain("web");
+        expect(names).toContain("admin");
+        expect(names).toContain("core");
+        const relatives = found.map((p) => p.relative);
+        expect(relatives).toContain("apps/web");
+        expect(relatives).toContain("apps/admin");
+        expect(relatives).toContain("packages/core");
       } finally {
         await fs.rm(dir, { recursive: true, force: true });
       }

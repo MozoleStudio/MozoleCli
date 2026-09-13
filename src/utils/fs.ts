@@ -249,6 +249,14 @@ export async function discoverWorkspaceProjects(
   const root = path.resolve(workspaceRoot);
   const projects = new Map<string, DiscoveredProject>();
 
+  const addProject = (subPath: string) => {
+    const canonicalPath = path.resolve(subPath);
+    if (projects.has(canonicalPath)) return;
+    const name = path.basename(canonicalPath);
+    const rel = path.relative(root, canonicalPath).split(path.sep).join("/");
+    projects.set(canonicalPath, { name, path: canonicalPath, relative: rel });
+  };
+
   // 1. Check package.json workspaces if present
   const manifestPath = path.join(root, "package.json");
   if (await exists(manifestPath)) {
@@ -270,17 +278,14 @@ export async function discoverWorkspaceProjects(
               const entries = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
               for (const entry of entries) {
                 if (entry.isDirectory()) {
-                  const sub = path.join(baseDir, entry.name);
-                  const rel = path.relative(root, sub).split(path.sep).join("/");
-                  projects.set(rel, { name: rel, path: sub, relative: rel });
+                  addProject(path.join(baseDir, entry.name));
                 }
               }
             }
           } else {
             const target = path.join(root, pattern);
             if ((await exists(target)) && (await isDirectory(target))) {
-              const rel = path.relative(root, target).split(path.sep).join("/");
-              projects.set(rel, { name: rel, path: target, relative: rel });
+              addProject(target);
             }
           }
         }),
@@ -294,9 +299,7 @@ export async function discoverWorkspaceProjects(
     const entries = await readdir(projectsDir, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        const sub = path.join(projectsDir, entry.name);
-        const rel = path.relative(root, sub).split(path.sep).join("/");
-        projects.set(entry.name, { name: entry.name, path: sub, relative: rel });
+        addProject(path.join(projectsDir, entry.name));
       }
     }
   }
@@ -328,8 +331,7 @@ export async function discoverWorkspaceProjects(
           exists(path.join(topPath, "AGENTS.md")),
         ]);
         if (pkgExists || agentsExists) {
-          const rel = top.name;
-          projects.set(rel, { name: rel, path: topPath, relative: rel });
+          addProject(topPath);
           return;
         }
 
@@ -343,8 +345,7 @@ export async function discoverWorkspaceProjects(
               exists(path.join(subPath, "AGENTS.md")),
             ]);
             if (subPkgExists || subAgentsExists) {
-              const rel = `${top.name}/${sub.name}`;
-              projects.set(rel, { name: rel, path: subPath, relative: rel });
+              addProject(subPath);
             }
           }),
         );
@@ -352,7 +353,9 @@ export async function discoverWorkspaceProjects(
     );
   }
 
-  return Array.from(projects.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(projects.values()).sort(
+    (a, b) => a.name.localeCompare(b.name) || a.relative.localeCompare(b.relative),
+  );
 }
 
 export async function findProjectRoot(startDir = process.cwd()): Promise<string | null> {

@@ -199,6 +199,10 @@ export function probeDOM(): ProbeResult {
           let ancestor = el.parentElement;
           while (ancestor && ancestor !== document.documentElement) {
             const aStyle = window.getComputedStyle(ancestor);
+            // Local scroll containers handle overflowing content via scrolling; do not flag as defects
+            if (/(auto|scroll)/.test(aStyle.overflowX) || /(auto|scroll)/.test(aStyle.overflowY)) {
+              break;
+            }
             const aRect = ancestor.getBoundingClientRect();
             const clipX = /^(hidden|clip)$/.test(aStyle.overflowX);
             const clipY = /^(hidden|clip)$/.test(aStyle.overflowY);
