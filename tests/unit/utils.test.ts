@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { findAiTracesInContent } from "../../src/utils/ai-trace.js";
+import { findAttributionInContent } from "../../src/utils/attribution.js";
 import { atomicWrite, discoverWorkspaceProjects, isSafeProjectName } from "../../src/utils/fs.js";
 import { formatPhaseCommitMessage } from "../../src/utils/git.js";
 
@@ -46,8 +46,8 @@ describe("Phase 1 Utilities", () => {
     });
   });
 
-  describe("findAiTracesInContent", () => {
-    it("detects forbidden AI markers", () => {
+  describe("findAttributionInContent", () => {
+    it("detects forbidden attribution markers", () => {
       const syntheticMarker1 = ["Generated", "by", "AI", "assistant"].join(" ");
       const syntheticMarker2 = ["Co-authored-by:", "Claude", "<noreply@anthropic.com>"].join(" ");
       const dirtyCode = `
@@ -55,7 +55,7 @@ describe("Phase 1 Utilities", () => {
         export const x = 1;
         // ${syntheticMarker2}
       `;
-      const matches = findAiTracesInContent(dirtyCode, "test.ts");
+      const matches = findAttributionInContent(dirtyCode, "test.ts");
       expect(matches.length).toBe(2);
       expect(matches[0].match.toLowerCase()).toContain(["generated", "by", "ai"].join(" "));
       expect(matches[1].match.toLowerCase()).toContain(["co-authored-by:", "claude"].join(" "));
@@ -66,7 +66,7 @@ describe("Phase 1 Utilities", () => {
         // Action button primitive
         export const Button = () => <button>Click</button>;
       `;
-      const matches = findAiTracesInContent(cleanCode, "test.ts");
+      const matches = findAttributionInContent(cleanCode, "test.ts");
       expect(matches.length).toBe(0);
     });
   });

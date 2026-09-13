@@ -1,15 +1,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pc from "picocolors";
-import { scanProjectForAiTraces } from "../utils/ai-trace.js";
+import { scanProjectAttribution } from "../utils/attribution.js";
 import { exists, findNodeModulesFile, findProjectRoot } from "../utils/fs.js";
 import { run } from "../utils/process.js";
+import { auditPerformance, formatPerformance } from "./performance.js";
 import { testCommand } from "./test.js";
 
 export interface VerifyOptions {
   cwd?: string;
   skipBuild?: boolean;
   withProbe?: boolean;
+  withPerformance?: boolean;
 }
 
 export interface VerificationStage {
@@ -31,7 +33,7 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
   // Stage 1: Synthetic Trace Scanner
   console.log(pc.bold("\n1. Scanning for synthetic attribution markers and bot trailers..."));
   try {
-    const traces = await scanProjectForAiTraces(projectRoot);
+    const traces = await scanProjectAttribution(projectRoot);
     if (traces.length > 0) {
       stages.push({
         name: "Synthetic Trace Scanner",
@@ -177,6 +179,25 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
         name: "Live DOM Geometry Probe",
         success: false,
         message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (options.withPerformance) {
+    console.log(pc.bold("\n7. Auditing static performance budgets..."));
+    try {
+      const report = await auditPerformance({ cwd: projectRoot });
+      stages.push({
+        name: "Performance Budgets",
+        success: !report.findings.some((finding) => finding.severity === "error"),
+        evidence: formatPerformance(report).join("\n"),
+      });
+      for (const line of formatPerformance(report)) console.log(line);
+    } catch (error) {
+      stages.push({
+        name: "Performance Budgets",
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
       });
     }
   }

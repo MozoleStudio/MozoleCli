@@ -234,9 +234,14 @@ const verifyCmd = defineCommand({
   meta: {
     name: "verify",
     description:
-      "Run full deterministic verification (lint, typecheck, contracts, AI trace, optional probe)",
+      "Run full deterministic verification (lint, typecheck, contracts, attribution, optional probe)",
   },
   args: {
+    performance: {
+      type: "boolean",
+      default: false,
+      description: "Also enforce static build performance budgets",
+    },
     probe: {
       type: "boolean",
       description: "Also run headless live DOM geometry & trace probe",
@@ -246,10 +251,86 @@ const verifyCmd = defineCommand({
   },
   async run({ args }) {
     const { verifyCommand } = await import("./commands/verify.js");
-    const passed = await verifyCommand({ withProbe: Boolean(args.probe) });
+    const passed = await verifyCommand({
+      withProbe: Boolean(args.probe),
+      withPerformance: Boolean(args.performance),
+    });
     if (!passed) {
       process.exit(1);
     }
+  },
+});
+
+const performanceCmd = defineCommand({
+  meta: {
+    name: "performance",
+    description: "Audit built route and asset sizes against budgets and a baseline",
+  },
+  args: {
+    path: { type: "string", description: "Project directory" },
+    from: { type: "string", description: "Build output, defaults to dist or build/client" },
+    base: { type: "string", default: "/", description: "Deployment URL base path" },
+    config: {
+      type: "string",
+      description: "Budget JSON, defaults to performance.config.json when present",
+    },
+    baseline: { type: "string", description: "Previous report JSON for regression checks" },
+    "save-baseline": { type: "string", description: "Save a passing audit to a new JSON file" },
+    output: { type: "string", description: "Save report JSON outside the build output" },
+    build: { type: "boolean", default: false, description: "Run npm run build before measuring" },
+    json: { type: "boolean", default: false, description: "Emit machine-readable JSON" },
+  },
+  async run({ args }) {
+    const { performanceCommand } = await import("./commands/performance.js");
+    process.exitCode = await performanceCommand({
+      cwd: args.path,
+      from: args.from,
+      base: args.base,
+      config: args.config,
+      baseline: args.baseline,
+      saveBaseline: args["save-baseline"],
+      output: args.output,
+      build: args.build,
+      json: args.json,
+    });
+  },
+});
+
+const hygieneCmd = defineCommand({
+  meta: {
+    name: "hygiene",
+    description: "Audit repository attribution and clean standalone signatures",
+  },
+  args: {
+    path: { type: "string", description: "Repository root" },
+    fix: {
+      type: "boolean",
+      default: false,
+      description: "Clean safe signatures in an organization repository",
+    },
+    strict: {
+      type: "boolean",
+      default: false,
+      description: "Also report vendor and model references",
+    },
+    json: { type: "boolean", default: false, description: "Emit a machine-readable report" },
+    history: {
+      type: "string",
+      default: "0",
+      description: "Number of recent commits to audit (0–10000)",
+    },
+    message: { type: "string", description: "Validate a commit message file" },
+  },
+  async run({ args }) {
+    const { hygieneCommand } = await import("./commands/hygiene.js");
+    process.exitCode = await hygieneCommand({
+      cwd: args.path,
+      fix: args.fix,
+      strict: args.strict,
+      json: args.json,
+      history: Number(args.history),
+      message: args.message,
+    });
   },
 });
 
@@ -316,6 +397,8 @@ export const main = defineCommand({
     repomap: repomapCmd,
     test: testCmd,
     verify: verifyCmd,
+    hygiene: hygieneCmd,
+    performance: performanceCmd,
     doctor: doctorCmd,
     ui: uiCmd,
   },

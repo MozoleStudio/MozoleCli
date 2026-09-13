@@ -91,10 +91,56 @@ configuration-file access restrictions on the server. Configure mail and HTTPS o
 The tool does not log into FTP, run rsync or upload anything; upload the directory contents
 through your authorized deployment process. Packages are capped at 512 MiB input size.
 
+## Performance budgets
+
+    mozole performance --build
+    mozole performance --from build/client --base /client/ --json
+    mozole performance --save-baseline docs/quality/performance-baseline.json
+    mozole performance --baseline docs/quality/performance-baseline.json --output .mozole/performance.json
+    mozole verify --performance
+
+Measure an existing dist or build/client by default; use --build to run npm run build first.
+If both directories exist, select --from explicitly. HTML pages define routes; static
+module imports, re-exports, linked stylesheets, CSS imports and module preloads are counted
+once per route. Inline scripts/styles also receive separate size estimates. Dynamic imports
+are listed as deferred and excluded from initial budgets, even if invoked at startup.
+
+Defaults: initial JS 150 KiB gzip, CSS 50 KiB gzip, HTML 50 KiB gzip; individual media
+512 KiB raw, fonts 150 KiB raw, entire build 10 MiB raw. Set byte limits in the budgets
+object of performance.config.json (jsGzip, cssGzip, htmlGzip, mediaRaw, fontRaw, totalRaw).
+--config selects another JSON file. Regression fails only when growth exceeds both 10%
+and 4096 bytes; customize regression.percent and regression.bytes in the same config.
+
+Exit codes: 0 within budgets (warnings may remain), 1 violations/missing local resources,
+2 invalid configuration or operational failure. Baselines are created only without errors
+and never overwritten. Reports can overwrite previous performance reports, not unrelated
+JSON. Keep reports/baselines outside build output. All paths are project-relative.
+
+No browser, screenshot, remote download or runtime timing is used. gzip level 9 and Brotli
+quality 5 estimate per-file compression; server settings can differ. Media/font budgets
+cover every emitted asset, not the actual resources downloaded by a particular route.
+Maps, precompressed copies and dotfiles are excluded and reported. Static output must
+contain HTML. A client router without prerendering exposes only its emitted HTML shell.
+External resources, bare imports/import maps and computed imports require review.
+
+## Repository hygiene
+
+Run mozole hygiene --path <repository> --strict --json for a read-only attribution audit.
+Use --history 100 to include recent commit messages. Exit codes: 0 clean, 1 findings,
+2 operational error. Review skipped files: binary, non-UTF8, oversized, dependency and
+output files are not inspected. Git-ignored files are excluded unless tracked.
+
+Run mozole hygiene --path <repository> --fix to neutralize standalone signatures.
+Cleanup requires a clean working tree and a github.com/mozolestudio origin. Review
+remaining findings and the diff, then run the repository verification command.
+Use chore: clean repository metadata for maintenance commits without synthetic trailers.
+Use mozole hygiene --message <message-file> to validate a proposed commit message.
+No commits, pushes, history rewrites or tool configuration deletions are performed.
+
 ## TUI
 
-Open mozole ui and select [6] TOOLS. Choose Add components, Optimize images, or Create
-release. Enter configuration with Tab/arrow navigation, Ctrl+U to clear, Enter to run,
+Open mozole ui and select [6] TOOLS. Choose Add components, Optimize images, Create
+release, or Audit performance. Enter configuration with Tab/arrow navigation, Ctrl+U to clear, Enter to run,
 and Escape to return. Actions use the currently selected project and report results in
 both the panel and cockpit log. Component addition preserves custom code; image encoding
 preserves originals; release builds unless Skip build is yes and never uploads.
@@ -104,6 +150,7 @@ Headless equivalents:
     mozole ui --action component-add --component accordion,sheet
     mozole ui --action assets-optimize --input assets/images
     mozole ui --action release --format zip --output releases/v1
+    mozole ui --action performance --input build/client --output .mozole/performance.json
 
 ## Implementation references
 

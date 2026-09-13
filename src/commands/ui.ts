@@ -16,6 +16,7 @@ import { addComponents } from "./add.js";
 import { adoptProject } from "./adopt.js";
 import { optimizeAssets } from "./assets.js";
 import { doctorCommand } from "./doctor.js";
+import { performanceCommand } from "./performance.js";
 import { phaseCommand } from "./phase.js";
 import { prototypeInit } from "./prototype.js";
 import { createRelease } from "./release.js";
@@ -115,6 +116,7 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
         { title: "[10] Add Component", value: "component-add" },
         { title: "[11] Optimize Images", value: "assets-optimize" },
         { title: "[12] Create Release", value: "release" },
+        { title: "[13] Audit Performance", value: "performance" },
       ],
     });
     requestedAction = promptRes?.action;
@@ -150,6 +152,13 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
             output: options.output,
             format: options.format,
             skipBuild: options.skipBuild,
+          });
+          break;
+        case "performance":
+          process.exitCode = await performanceCommand({
+            cwd: targetPath,
+            from: options.input,
+            output: options.output,
           });
           break;
         case "phase-status":

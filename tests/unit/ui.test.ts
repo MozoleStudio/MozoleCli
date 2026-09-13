@@ -6,6 +6,7 @@ import prompts from "prompts";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { doctorCommand } from "../../src/commands/doctor.js";
+import { performanceCommand } from "../../src/commands/performance.js";
 import { phaseCommand } from "../../src/commands/phase.js";
 import { repomapCommand } from "../../src/commands/repomap.js";
 import { uiCommand } from "../../src/commands/ui.js";
@@ -15,6 +16,9 @@ import { CockpitApp } from "../../src/ui/CockpitApp.js";
 import { ToolsPanel } from "../../src/ui/ToolsPanel.js";
 import { atomicWrite } from "../../src/utils/fs.js";
 
+vi.mock("../../src/commands/performance.js", () => ({
+  performanceCommand: vi.fn().mockResolvedValue(0),
+}));
 vi.mock("prompts", () => ({ default: vi.fn() }));
 vi.mock("../../src/commands/phase.js", () => ({
   phaseCommand: vi.fn(),
@@ -158,6 +162,27 @@ describe("prototype cockpit selection", () => {
     expect(verifyCommand).toHaveBeenCalledWith({
       cwd: path.join(root, "projects/client"),
     });
+  });
+
+  it("propagates performance audit failures for the selected project", async () => {
+    const before = process.exitCode;
+    vi.mocked(performanceCommand).mockResolvedValueOnce(1);
+    try {
+      await uiCommand({
+        project: "client",
+        action: "performance",
+        input: "build/client",
+        output: ".mozole/performance.json",
+      });
+      expect(performanceCommand).toHaveBeenCalledWith({
+        cwd: path.join(root, "projects/client"),
+        from: "build/client",
+        output: ".mozole/performance.json",
+      });
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = before;
+    }
   });
 
   it("renders ToolsPanel Ink component with matched design and cards", () => {

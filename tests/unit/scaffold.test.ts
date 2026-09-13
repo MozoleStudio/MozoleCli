@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { auditHtmlA11y } from "../../src/qa/a11y.js";
 import { auditCssContracts } from "../../src/qa/contract.js";
 import { scaffoldNewProject } from "../../src/scaffold/index.js";
-import { scanProjectForAiTraces } from "../../src/utils/ai-trace.js";
+import { scanProjectAttribution } from "../../src/utils/attribution.js";
 import { exists } from "../../src/utils/fs.js";
 import { run } from "../../src/utils/process.js";
 
@@ -20,7 +20,7 @@ describe("scaffoldNewProject", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("scaffolds a complete standard project with zero AI traces and valid tokens", async () => {
+  it("scaffolds a complete standard project with zero synthetic traces and valid tokens", async () => {
     const projectDir = path.join(tmpDir, "test-site");
     await scaffoldNewProject({
       targetDir: projectDir,
@@ -80,7 +80,7 @@ describe("scaffoldNewProject", () => {
     expect(phpIndex).toContain("rate_limit");
 
     // 5. Zero AI Trace Check across entire project
-    const traces = await scanProjectForAiTraces(projectDir);
+    const traces = await scanProjectAttribution(projectDir);
     expect(traces).toEqual([]);
     const pkg = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8"));
     expect(pkg.dependencies["@radix-ui/react-dialog"]).toBeDefined();

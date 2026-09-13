@@ -1,6 +1,6 @@
 {
   "name": "@mozole/cli",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "description": "Agentic project generator and development cockpit for Mozole Studio",
   "type": "module",
   "bin": {
@@ -9,7 +9,9 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md",
+    "docs"
   ],
   "publishConfig": {
     "access": "public"
@@ -37,19 +39,22 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-build.mjs && tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
     "lint": "biome check src tests",
     "format": "biome format --write src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify": "biome check src tests && tsc --noEmit && npm run build && vitest run",
-    "prepublishOnly": "npm run verify"
+    "prepublishOnly": "npm run verify",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "citty": "^0.1.6",
+    "es-module-lexer": "^1.7.0",
     "fflate": "^0.8.3",
     "ink": "^7.1.1",
+    "parse5": "^7.3.0",
     "picocolors": "^1.1.1",
     "playwright-core": "^1.63.0",
     "postcss": "^8.5.3",

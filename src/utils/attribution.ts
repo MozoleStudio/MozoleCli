@@ -1,18 +1,12 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { inspectContent } from "../hygiene/rules.js";
 
-export interface AiTraceMatch {
+export interface AttributionMatch {
   file: string;
   line: number;
   match: string;
 }
-
-const AI_PATTERNS = [
-  /\b(?:generated|authored|written|created|scaffolded)\s+(?:by|with|using)\s+(?:an?\s+)?(?:ai|claude|chatgpt|openai|cursor|copilot|gemini|antigravity|v0|bolt|lovable)\b/i,
-  /\bco-authored-by:\s*(?:claude|cursor|copilot|assistant|gpt|chatgpt|bot|ai)\b/i,
-  /\bauto-generated\s+(?:by|with)\s+(?:claude|cursor|ai|copilot)\b/i,
-  /\b\/\*\s*ai-(?:prompt|trace|instruction)\b/i,
-];
 
 const IGNORED_SEGMENTS = new Set(["node_modules", ".git", "dist", "archive", "coverage", "build"]);
 
@@ -30,30 +24,27 @@ const ALLOWED_EXTENSIONS = new Set([
   ".md",
 ]);
 
-export function findAiTracesInContent(content: string, filePath: string): AiTraceMatch[] {
-  const matches: AiTraceMatch[] = [];
+export function findAttributionInContent(content: string, filePath: string): AttributionMatch[] {
   const lines = content.split(/\r?\n/);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    for (const pattern of AI_PATTERNS) {
-      const match = pattern.exec(line);
-      if (match) {
-        matches.push({
-          file: filePath,
-          line: i + 1,
-          match: match[0],
-        });
-        break;
-      }
-    }
-  }
-
-  return matches;
+  return inspectContent(content, filePath)
+    .filter((finding) =>
+      [
+        "generator-attribution",
+        "synthetic-trailer",
+        "generator-badge",
+        "assistant-boilerplate",
+        "tool-link",
+      ].includes(finding.rule),
+    )
+    .map((finding) => ({
+      file: finding.file,
+      line: finding.line,
+      match: lines[finding.line - 1].trim(),
+    }));
 }
 
-export async function scanProjectForAiTraces(rootDir: string): Promise<AiTraceMatch[]> {
-  const matches: AiTraceMatch[] = [];
+export async function scanProjectAttribution(rootDir: string): Promise<AttributionMatch[]> {
+  const matches: AttributionMatch[] = [];
 
   async function walk(currentDir: string): Promise<void> {
     const entries = await readdir(currentDir, { withFileTypes: true });
@@ -69,7 +60,7 @@ export async function scanProjectForAiTraces(rootDir: string): Promise<AiTraceMa
           try {
             const content = await readFile(fullPath, "utf8");
             const relPath = path.relative(rootDir, fullPath);
-            matches.push(...findAiTracesInContent(content, relPath));
+            matches.push(...findAttributionInContent(content, relPath));
           } catch {}
         }
       }

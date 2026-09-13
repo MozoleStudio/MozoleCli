@@ -108,3 +108,34 @@ This project is governed by [AGENTS.md](./AGENTS.md). All automated agents and c
 ## License
 
 MIT © Mozole Studio
+
+## Repository hygiene (2.2.0)
+
+Use `mozole hygiene --strict --json` to audit repository metadata and vendor references.
+Use `mozole hygiene --fix` on a clean mozolestudio checkout for conservative signature
+cleanup, `--history 100` to inspect recent commits, and `--message <file>` to validate
+commit text. See [the maintenance runbook](docs/repository-hygiene.md) for scope, exit
+codes, skipped files and recurring maintenance integration.
+
+## Performance budgets (2.2.0)
+
+```sh
+mozole performance --build
+mozole performance --from build/client --base /client/ --json
+mozole performance --save-baseline docs/quality/performance-baseline.json
+mozole performance --baseline docs/quality/performance-baseline.json
+mozole verify --performance
+```
+
+The performance toolkit checks per-route JS/CSS/HTML compression budgets, large media
+and fonts, total output size and regressions. It follows static imports and CSS imports,
+reports dynamic modules separately, and supports JSON reports and the TUI [P] action.
+See [performance scope and configuration](docs/performance.md). This is a static size
+check; it does not measure runtime page speed or Core Web Vitals.
+
+## Publishing a verified package
+
+Run `npm run verify`, then `npm pack`. Packing rebuilds a clean `dist` directory and
+includes toolkit documentation. Inspect the archive and smoke-test its installed CLI.
+To publish the reviewed archive, run `npm publish ./mozole-cli-2.2.0.tgz --access public`
+with an authorized npm account. Package creation does not publish anything.

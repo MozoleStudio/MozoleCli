@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import { useState } from "react";
 import { addComponents } from "../commands/add.js";
 import { optimizeAssets } from "../commands/assets.js";
+import { performanceCommand } from "../commands/performance.js";
 import { createRelease } from "../commands/release.js";
 import { COMPONENTS } from "../scaffold/components.js";
 
@@ -55,7 +56,22 @@ const TOOLS_CONFIG: ToolItem[] = [
     ],
     defaults: ["release", "both", "", "no"],
     guidance: () =>
-      "Runs verify and build pipeline unless skipped. Generates timestamped zip/directory archives.",
+      "Runs the project build unless skipped. Packages a new zip/directory without uploading.",
+  },
+  {
+    key: "P",
+    name: "performance",
+    title: "AUDIT PERFORMANCE BUDGETS",
+    desc: "Measure built routes, compressed bundles, media and font sizes",
+    fields: [
+      "Build directory (blank = auto)",
+      "Site base path",
+      "Baseline JSON (optional)",
+      "Build first: yes / no",
+    ],
+    defaults: ["", "/", "", "no"],
+    guidance: () =>
+      "Checks static size budgets. Configure limits in performance.config.json. Does not measure runtime speed.",
   },
 ];
 
@@ -102,7 +118,7 @@ export function ToolsPanel({
           widths: values[4] || undefined,
           log,
         });
-      } else {
+      } else if (selected === 2) {
         if (!["yes", "no"].includes(values[3])) {
           throw new Error("Skip build must be yes or no.");
         }
@@ -114,6 +130,18 @@ export function ToolsPanel({
           skipBuild: values[3] === "yes",
           log,
         });
+      }
+      if (selected === 3) {
+        if (!["yes", "no"].includes(values[3])) throw new Error("Build first must be yes or no.");
+        const status = await performanceCommand({
+          cwd: projectRoot,
+          from: values[0] || undefined,
+          base: values[1],
+          baseline: values[2] || undefined,
+          build: values[3] === "yes",
+          log,
+        });
+        if (status !== 0) throw new Error("Performance audit did not pass; review the findings.");
       }
       onLog(`${TOOLS_CONFIG[selected].title} completed`, "success");
     } catch (error) {
@@ -167,11 +195,11 @@ export function ToolsPanel({
         return;
       }
       if (key.upArrow) {
-        setSelected((value) => (value + 2) % 3);
+        setSelected((value) => (value + TOOLS_CONFIG.length - 1) % TOOLS_CONFIG.length);
         return;
       }
       if (key.downArrow) {
-        setSelected((value) => (value + 1) % 3);
+        setSelected((value) => (value + 1) % TOOLS_CONFIG.length);
         return;
       }
       if (input === "c" || input === "C") {
@@ -195,6 +223,15 @@ export function ToolsPanel({
       if (input === "r" || input === "R") {
         setSelected(2);
         setValues([...TOOLS_CONFIG[2].defaults]);
+        setField(0);
+        setMessages([]);
+        setEditing(true);
+        onEditingChange?.(true);
+        return;
+      }
+      if (input.toLowerCase() === "p") {
+        setSelected(3);
+        setValues([...TOOLS_CONFIG[3].defaults]);
         setField(0);
         setMessages([]);
         setEditing(true);
@@ -264,7 +301,7 @@ export function ToolsPanel({
           <Text bold color="yellow">
             PROJECT TOOLCHAIN & ASSET PIPELINE
           </Text>
-          <Text dimColor>● 3 TOOLS AVAILABLE</Text>
+          <Text dimColor>● {TOOLS_CONFIG.length} TOOLS AVAILABLE</Text>
         </Box>
         <Box marginTop={1} gap={2}>
           <Box>

@@ -17,3 +17,4 @@ jobs:
         with: { php-version: "8.3", coverage: none }
       - run: npm ci
       - run: npm run verify
+      - run: npm pack --dry-run --ignore-scripts
