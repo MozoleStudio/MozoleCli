@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rename, rm, stat } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { zip } from "fflate";
 import { scaffoldToolsGuide } from "../scaffold/tools-guide.js";
@@ -44,10 +44,13 @@ export async function createRelease(options: ReleaseOptions = {}): Promise<strin
   if (backend !== "php" && backend !== "none") throw new Error(`Unsupported backend: ${backend}`);
   const flagship = metadata.profile === "flagship" || Boolean(pkg.dependencies?.wouter);
   const framework = Boolean(pkg.devDependencies?.["@react-router/dev"]);
-  const source = await projectPath(
-    root,
-    options.from ?? (framework && !flagship ? "build/client" : "dist"),
-  );
+  const hasBuildClient = await exists(path.join(root, "build/client"));
+  const defaultSource = hasBuildClient
+    ? "build/client"
+    : framework && !flagship
+      ? "build/client"
+      : "dist";
+  const source = await projectPath(root, options.from ?? defaultSource);
   const destination = await projectPath(root, options.output ?? "release");
   const archive = await projectPath(root, `${options.output ?? "release"}.zip`);
   if (
@@ -196,11 +199,21 @@ Review release-manifest.json for omitted files. Supply secrets on the server; .e
       if (await exists(output)) throw new Error(`Output appeared during packaging: ${output}`);
     }
     if (format !== "zip") {
-      await rename(stagedDirectory, destination);
+      try {
+        await rename(stagedDirectory, destination);
+      } catch {
+        await cp(stagedDirectory, destination, { recursive: true });
+        await rm(stagedDirectory, { recursive: true, force: true });
+      }
       outputs.push(destination);
     }
     if (format !== "directory") {
-      await rename(path.join(staging, "release.zip"), archive);
+      try {
+        await rename(path.join(staging, "release.zip"), archive);
+      } catch {
+        await copyFile(path.join(staging, "release.zip"), archive);
+        await rm(path.join(staging, "release.zip"), { force: true });
+      }
       outputs.push(archive);
     }
   } finally {
