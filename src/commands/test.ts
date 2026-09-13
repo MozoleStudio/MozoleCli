@@ -25,26 +25,23 @@ export async function testCommand(options: TestCommandOptions = {}): Promise<voi
   if (testType === "contract" || testType === "all") {
     console.log(pc.cyan(`\n🎨 Running Mozole Design Token Contract Audit in ${projectRoot}...`));
 
-    async function collectCss(dir: string): Promise<CssSource[]> {
-      if (!(await exists(dir))) return [];
+    const cssSources: CssSource[] = [];
+    async function collectCss(dir: string): Promise<void> {
+      if (!(await exists(dir))) return;
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      const results = await Promise.all(
+      await Promise.all(
         entries.map(async (e) => {
           const full = path.join(dir, e.name);
           if (e.isDirectory() && !["node_modules", ".git", "dist", "build"].includes(e.name)) {
-            return collectCss(full);
-          }
-          if (e.isFile() && e.name.endsWith(".css")) {
+            await collectCss(full);
+          } else if (e.isFile() && e.name.endsWith(".css")) {
             const css = await fs.readFile(full, "utf8");
-            return [{ file: path.relative(projectRoot, full), css }];
+            cssSources.push({ file: path.relative(projectRoot, full), css });
           }
-          return [];
         }),
       );
-      return results.flat();
     }
-
-    const cssSources = await collectCss(path.join(projectRoot, "src"));
+    await collectCss(path.join(projectRoot, "src"));
 
     if (cssSources.length === 0) {
       console.log(pc.yellow("  ! No CSS files found in src/"));

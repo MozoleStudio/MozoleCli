@@ -239,16 +239,20 @@ export async function runLiveGeometryProbe(
   ];
 
   const cssList: string[] = [];
-  async function collectCss(dir: string) {
+  async function collectCss(dir: string): Promise<void> {
     if (!(await exists(dir))) return;
-    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory() && !["node_modules", ".git"].includes(e.name)) {
-        await collectCss(full);
-      } else if (e.isFile() && e.name.endsWith(".css")) {
-        cssList.push(await fs.readFile(full, "utf8"));
-      }
-    }
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    await Promise.all(
+      entries.map(async (e) => {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory() && !["node_modules", ".git"].includes(e.name)) {
+          await collectCss(full);
+        } else if (e.isFile() && e.name.endsWith(".css")) {
+          const css = await fs.readFile(full, "utf8");
+          cssList.push(css);
+        }
+      }),
+    );
   }
   await collectCss(staticDir);
   const boundaryPoints = extractBreakpointBoundaries(cssList, { minWidth: 320, maxWidth: 1440 });
