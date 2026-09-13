@@ -22,8 +22,12 @@ export async function getProjectPhaseStatus(
   }
 
   const content = await fs.readFile(statusPath, "utf8");
-  const match = content.match(/\*\*Current Phase:\*\*\s*Phase\s*(\d{2})/i);
-  const currentPhase = match ? match[1] : "00";
+  const match = content.match(/^\*\*Current Phase:\*\*\s*Phase\s*([^\r\n]+)$/im);
+  const phaseRaw = match?.[1]?.trim() ?? "";
+  if (!match || !PHASES.some((phase) => phase.id === phaseRaw)) {
+    throw new Error(`Invalid current phase in ${statusPath}; expected Phase 00 through 10.`);
+  }
+  const currentPhase = phaseRaw;
 
   return { currentPhase, content };
 }
@@ -32,8 +36,26 @@ export async function phaseCommand(options: PhaseCommandOptions = {}): Promise<v
   const cwd = options.cwd ?? process.cwd();
   const projectRoot = (await findProjectRoot(cwd)) ?? cwd;
 
-  const { currentPhase } = await getProjectPhaseStatus(projectRoot);
+  const { currentPhase, content } = await getProjectPhaseStatus(projectRoot);
   const action = options.action ?? "status";
+  if (!["status", "next", "reopen"].includes(action)) {
+    throw new Error(`Invalid phase action '${action}'. Expected status, next, or reopen.`);
+  }
+
+  const persistPhase = async (phase: string, message: string) => {
+    const statusPath = path.join(projectRoot, "docs", "phases", "status.md");
+    await atomicWrite(statusPath, generatePhasesStatusMd(phase));
+    if (await isGitRepo(projectRoot)) {
+      try {
+        const result = await stageAndCommit(projectRoot, message);
+        if (!result.success) throw new Error(result.output);
+      } catch (error) {
+        await atomicWrite(statusPath, content);
+        throw new Error(`Phase change not committed; status restored. ${String(error)}`);
+      }
+      console.log(pc.green(`  ✓ Git commit created: ${message}`));
+    }
+  };
 
   if (action === "status") {
     console.log(
@@ -66,7 +88,7 @@ export async function phaseCommand(options: PhaseCommandOptions = {}): Promise<v
     if (currentNum >= 10) {
       console.log(pc.green("\n🎉 All 10 phases completed! Project is production launched."));
       console.log(
-        `For post-launch modifications, use ${pc.cyan("mozole phase reopen <number>")}.\n`,
+        "Routine maintenance can continue here. Reopen a phase only for architectural changes.\n",
       );
       return;
     }
@@ -78,22 +100,13 @@ export async function phaseCommand(options: PhaseCommandOptions = {}): Promise<v
 
     console.log(pc.cyan(`\nAdvancing from Phase ${currentPhase} to Phase ${nextPhase}...`));
 
-    // Update status.md
-    const newStatusMd = generatePhasesStatusMd(nextPhase);
-    const statusPath = path.join(projectRoot, "docs", "phases", "status.md");
-    await atomicWrite(statusPath, newStatusMd);
-
-    // Commit if git repository
-    if (await isGitRepo(projectRoot)) {
-      const commitMsg = formatPhaseCommitMessage(
+    await persistPhase(
+      nextPhase,
+      formatPhaseCommitMessage(
         currentPhase,
         `complete ${currentDef?.name ?? "phase"} and advance to phase ${nextPhase}`,
-      );
-      const commitRes = await stageAndCommit(projectRoot, commitMsg);
-      if (commitRes.success) {
-        console.log(pc.green(`  ✓ Git commit created: ${commitMsg}`));
-      }
-    }
+      ),
+    );
 
     console.log(pc.green(`\n✓ Advanced to Phase ${nextPhase}: ${nextDef?.name}`));
     console.log(`  ${nextDef?.description}`);
@@ -115,16 +128,17 @@ export async function phaseCommand(options: PhaseCommandOptions = {}): Promise<v
     if (!targetDef) {
       throw new Error(`Invalid phase ID '${targetPhaseId}'. Valid phases are 00 through 10.`);
     }
+    if (Number(targetPhaseId) >= Number(currentPhase)) {
+      throw new Error(
+        "Only a completed phase can be reopened. Use 'mozole phase next' to advance.",
+      );
+    }
 
     console.log(pc.yellow(`\nReopening Phase ${targetPhaseId} for post-launch maintenance...`));
-    const newStatusMd = generatePhasesStatusMd(targetPhaseId);
-    const statusPath = path.join(projectRoot, "docs", "phases", "status.md");
-    await atomicWrite(statusPath, newStatusMd);
-
-    if (await isGitRepo(projectRoot)) {
-      const commitMsg = `chore(phase-${targetPhaseId}): reopen phase for post-launch maintenance`;
-      await stageAndCommit(projectRoot, commitMsg);
-    }
+    await persistPhase(
+      targetPhaseId,
+      `chore(phase-${targetPhaseId}): reopen phase for maintenance`,
+    );
 
     console.log(pc.green(`✓ Reopened Phase ${targetPhaseId}: ${targetDef.name}\n`));
   }

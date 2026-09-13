@@ -1,9 +1,26 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { findAiTracesInContent } from "../../src/utils/ai-trace.js";
-import { isSafeProjectName } from "../../src/utils/fs.js";
+import { atomicWrite, isSafeProjectName } from "../../src/utils/fs.js";
 import { formatPhaseCommitMessage } from "../../src/utils/git.js";
 
 describe("Phase 1 Utilities", () => {
+  it("keeps concurrent atomic writes complete even within the same millisecond", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-atomic-"));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      const contents = Array.from({ length: 30 }, (_, i) => String(i).repeat(10000));
+      const file = path.join(directory, "state.json");
+      await Promise.all(contents.map((content) => atomicWrite(file, content)));
+      expect(contents).toContain(await fs.readFile(file, "utf8"));
+      expect(await fs.readdir(directory)).toEqual(["state.json"]);
+    } finally {
+      clock.mockRestore();
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
   describe("isSafeProjectName", () => {
     it("accepts valid alphanumeric project names", () => {
       expect(isSafeProjectName("hotel-luxe")).toBe(true);

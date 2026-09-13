@@ -19,7 +19,7 @@ describe("auditCssContracts", () => {
         transition: color 0.2s ease, transform 0.2s ease;
       }
     `;
-    const result = auditCssContracts([{ file: "test.css", css }]);
+    const result = auditCssContracts([{ file: "src/styles/tokens.css", css }]);
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual([]);
   });
@@ -53,9 +53,43 @@ describe("auditCssContracts", () => {
     expect(result.warnings[0].rule).toBe("fixed-frame-dimension");
     expect(result.warnings[0].severity).toBe("warn");
   });
+
+  it("fails closed on invalid CSS and prevents token-file and custom-property bypasses", () => {
+    const result = auditCssContracts([
+      { file: "broken.css", css: ".card { color:" },
+      { file: "components/theme.css", css: "@theme { --rogue: #abcdef; }" },
+      { file: "components/tokens.css", css: ".card { --local: #123456; }" },
+      { file: "src/styles/tokens.css", css: ".card { color: #123456; }" },
+    ]);
+    expect(result.errors.filter((error) => error.rule === "css-syntax")).toHaveLength(1);
+    expect(result.errors.filter((error) => error.rule === "literal-color")).toHaveLength(3);
+  });
+
+  it("finds transition all in any list position and transition-property", () => {
+    const result = auditCssContracts([
+      {
+        file: "app.css",
+        css: ".card { transition: opacity 1s, 2s all; transition-property: color, all; }",
+      },
+    ]);
+    expect(result.errors.filter((error) => error.rule === "transition-all")).toHaveLength(2);
+  });
 });
 
 describe("extractBreakpointBoundaries", () => {
+  it("handles modern range queries and bounds every default viewport", () => {
+    const boundaries = extractBreakpointBoundaries(
+      ["@media (width >= 50rem) { .a {} } @media (900px > width) { .b {} }"],
+      { minWidth: 790, maxWidth: 910 },
+    );
+    expect(boundaries).toEqual([799, 800, 801, 899, 900, 901]);
+    expect(
+      extractBreakpointBoundaries(["@media (800px < width < 900px) { .a {} }"], {
+        minWidth: 790,
+        maxWidth: 910,
+      }),
+    ).toEqual(boundaries);
+  });
   it("extracts boundary points with +/-1px deltas", () => {
     const css = `
       @media (min-width: 768px) { .box { display: flex; } }
@@ -74,6 +108,19 @@ describe("extractBreakpointBoundaries", () => {
 });
 
 describe("auditHtmlA11y", () => {
+  it("checks skip targets regardless of attribute order and rejects multiple headings", () => {
+    const html =
+      '<body><a href="#wrong" class="skip-link">Skip</a><main id="main"><h1>One</h1><h1>Two</h1></main></body>';
+    const rules = auditHtmlA11y([{ file: "index.html", html }]).errors.map((error) => error.rule);
+    expect(rules).toContain("skip-link-target");
+    expect(rules).toContain("single-h1");
+  });
+
+  it("ignores comments, script content and data-id attributes", () => {
+    const html =
+      '<body><a class="skip-link" href="#main">Skip</a><main id="main"><h1>One</h1><p data-id="main">Text</p></main><!-- <h1>Ignore</h1> --><script>const markup = \'<main id="main"><img>\';</script></body>';
+    expect(auditHtmlA11y([{ file: "index.html", html }]).errors).toEqual([]);
+  });
   it("validates accessible markup with landmarks and skip-link", () => {
     const html = `
       <!DOCTYPE html>

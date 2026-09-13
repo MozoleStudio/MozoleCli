@@ -15,7 +15,8 @@ export async function uiCommand(): Promise<void> {
   console.log(pc.dim("Mozole Studio Development & Verification Cockpit\n"));
 
   const protoRoot = await findPrototypeRoot(cwd);
-  const projectRoot = await findProjectRoot(cwd);
+  let projectRoot = await findProjectRoot(cwd);
+  if (projectRoot === protoRoot) projectRoot = null;
 
   let activeProject = projectRoot ? path.basename(projectRoot) : null;
   let currentPhase = "00";
@@ -42,6 +43,7 @@ export async function uiCommand(): Promise<void> {
         if (choice.project) {
           activeProject = choice.project;
           const chosenRoot = path.join(projectsDir, choice.project);
+          projectRoot = chosenRoot;
           try {
             const status = await getProjectPhaseStatus(chosenRoot);
             currentPhase = status.currentPhase;
@@ -77,13 +79,13 @@ export async function uiCommand(): Promise<void> {
 
   switch (action) {
     case "phase-status":
-      await phaseCommand({ action: "status" });
+      await phaseCommand({ action: "status", cwd: projectRoot ?? cwd });
       break;
     case "phase-next":
-      await phaseCommand({ action: "next" });
+      await phaseCommand({ action: "next", cwd: projectRoot ?? cwd });
       break;
     case "verify":
-      await verifyCommand();
+      if (!(await verifyCommand({ cwd: projectRoot ?? cwd }))) process.exitCode = 1;
       break;
     case "doctor":
       await doctorCommand();

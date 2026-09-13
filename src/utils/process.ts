@@ -1,4 +1,29 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+
+const activeChildren = new Set<number>();
+let cleanupRegistered = false;
+
+export function trackProcess(child: ChildProcess): void {
+  if (child.pid) {
+    const pid = child.pid;
+    activeChildren.add(pid);
+    child.once("close", () => activeChildren.delete(pid));
+  }
+  if (cleanupRegistered) return;
+  cleanupRegistered = true;
+  const cleanup = () => {
+    for (const pid of activeChildren) terminateProcess(pid, true);
+  };
+  process.once("exit", cleanup);
+  process.once("SIGINT", () => {
+    cleanup();
+    process.exit(130);
+  });
+  process.once("SIGTERM", () => {
+    cleanup();
+    process.exit(143);
+  });
+}
 
 export interface RunResult {
   command: string;
@@ -63,6 +88,7 @@ export async function run(
       detached: !isWindows,
       stdio: options.stdio ?? "pipe",
     });
+    trackProcess(child);
 
     let stdout = "";
     let stderr = "";

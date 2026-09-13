@@ -17,7 +17,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 
 export async function initGit(
   cwd: string,
-  initialCommitMessage = "feat: initial project scaffold by mozole",
+  initialCommitMessage = "feat: initialize project scaffold",
 ): Promise<boolean> {
   if (!(await isGitInstalled())) {
     return false;
@@ -26,16 +26,11 @@ export async function initGit(
   const initResult = await run("git", ["init"], { cwd });
   if (initResult.exitCode !== 0) return false;
 
-  await run("git", ["add", "."], { cwd });
+  const addResult = await run("git", ["add", "."], { cwd });
+  if (addResult.exitCode !== 0) return false;
 
   const commitResult = await run("git", ["commit", "-m", initialCommitMessage], {
     cwd,
-    env: {
-      GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || "Mozole Studio",
-      GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || "studio@mozole.com",
-      GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || "Mozole Studio",
-      GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || "studio@mozole.com",
-    },
   });
 
   return commitResult.exitCode === 0;
@@ -49,16 +44,27 @@ export async function stageAndCommit(
     return { success: false, output: "Not a git repository" };
   }
 
-  const addResult = await run("git", ["add", "."], { cwd });
-  if (addResult.exitCode !== 0) {
-    return { success: false, output: addResult.stderr };
+  const snapshot = await run("git", ["write-tree"], { cwd });
+  if (snapshot.exitCode !== 0) return { success: false, output: snapshot.stderr };
+  let outcome: { success: boolean; output: string };
+  try {
+    const addResult = await run("git", ["add", "."], { cwd });
+    if (addResult.exitCode !== 0) {
+      outcome = { success: false, output: addResult.stderr };
+    } else {
+      const result = await run("git", ["commit", "-m", message], { cwd });
+      outcome = { success: result.exitCode === 0, output: result.stdout + result.stderr };
+    }
+  } catch (error) {
+    outcome = { success: false, output: String(error) };
   }
-
-  const commitResult = await run("git", ["commit", "-m", message], { cwd });
-  return {
-    success: commitResult.exitCode === 0,
-    output: commitResult.stdout || commitResult.stderr,
-  };
+  if (!outcome.success) {
+    const restored = await run("git", ["read-tree", snapshot.stdout.trim()], { cwd });
+    if (restored.exitCode !== 0) {
+      throw new Error(`Unable to restore Git index: ${restored.stderr}`);
+    }
+  }
+  return outcome;
 }
 
 export function formatPhaseCommitMessage(phaseNumber: number | string, phaseTitle: string): string {

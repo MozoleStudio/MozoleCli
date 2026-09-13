@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import net from "node:net";
+import { terminateProcess, trackProcess } from "../utils/process.js";
 
 export interface ManagedServer {
   id: string;
@@ -29,25 +30,6 @@ export async function findAvailablePort(startPort = 5173, maxTries = 20): Promis
 
 class ServerManager {
   private servers = new Map<string, ManagedServer>();
-  private cleanupRegistered = false;
-
-  constructor() {
-    this.registerCleanup();
-  }
-
-  private registerCleanup(): void {
-    if (this.cleanupRegistered) return;
-    this.cleanupRegistered = true;
-
-    const onSignal = () => {
-      this.stopAll();
-      process.exit(0);
-    };
-
-    process.once("SIGINT", onSignal);
-    process.once("SIGTERM", onSignal);
-    process.once("exit", () => this.stopAll());
-  }
 
   public async startServer(projectName: string, projectPath: string): Promise<ManagedServer> {
     const existing = this.servers.get(projectName);
@@ -58,12 +40,15 @@ class ServerManager {
     const port = await findAvailablePort(5173);
     const recentLogs: string[] = [];
 
-    const child = spawn("npm", ["run", "dev", "--", "--port", String(port)], {
+    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+    const child = spawn(npmCmd, ["run", "dev", "--", "--port", String(port), "--strictPort"], {
       cwd: projectPath,
       shell: false,
+      detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, PORT: String(port) },
     });
+    trackProcess(child);
 
     const appendLog = (chunk: Buffer | string) => {
       const text = chunk.toString();
@@ -89,11 +74,18 @@ class ServerManager {
       recentLogs,
     };
 
-    child.once("exit", () => {
-      this.servers.delete(projectName);
+    child.once("close", () => {
+      if (this.servers.get(projectName) === managed) this.servers.delete(projectName);
     });
 
     this.servers.set(projectName, managed);
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", (error) => {
+        if (this.servers.get(projectName) === managed) this.servers.delete(projectName);
+        reject(error);
+      });
+    });
     return managed;
   }
 
@@ -101,14 +93,7 @@ class ServerManager {
     const managed = this.servers.get(projectName);
     if (!managed) return false;
 
-    try {
-      managed.process.kill("SIGTERM");
-      setTimeout(() => {
-        if (managed.process.exitCode === null) {
-          managed.process.kill("SIGKILL");
-        }
-      }, 1500).unref();
-    } catch {}
+    terminateProcess(managed.process.pid, true);
 
     this.servers.delete(projectName);
     return true;

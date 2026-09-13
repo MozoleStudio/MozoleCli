@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import pc from "picocolors";
 import { scanProjectForAiTraces } from "../utils/ai-trace.js";
 import { findProjectRoot } from "../utils/fs.js";
@@ -7,6 +9,7 @@ import { testCommand } from "./test.js";
 export interface VerifyOptions {
   cwd?: string;
   skipBuild?: boolean;
+  withProbe?: boolean;
 }
 
 export interface VerificationStage {
@@ -55,7 +58,11 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
   // Stage 2: Biome Lint & Format Check
   console.log(pc.bold("\n2. Running Biome linter and formatter..."));
   try {
-    const biomeRes = await run("npx", ["@biomejs/biome", "check", "src"], { cwd: projectRoot });
+    const biomeRes = await run(
+      process.execPath,
+      [path.join(projectRoot, "node_modules/@biomejs/biome/bin/biome"), "check", "src"],
+      { cwd: projectRoot },
+    );
     if (biomeRes.exitCode === 0) {
       stages.push({ name: "Biome Code Standards", success: true });
       console.log(pc.green("  ✓ Biome lint and formatting clean."));
@@ -63,7 +70,7 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
       stages.push({
         name: "Biome Code Standards",
         success: false,
-        evidence: biomeRes.stdout || biomeRes.stderr,
+        evidence: biomeRes.stderr + biomeRes.stdout,
       });
       console.log(pc.red("  ✗ Biome reported lint or formatting violations."));
     }
@@ -79,7 +86,14 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
   // Stage 3: TypeScript Compilation & Typecheck
   console.log(pc.bold("\n3. Running TypeScript typecheck..."));
   try {
-    const tscRes = await run("npx", ["tsc", "--noEmit"], { cwd: projectRoot });
+    const pkg = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
+    const tscRes = pkg.scripts?.typecheck
+      ? await run("npm", ["run", "typecheck"], { cwd: projectRoot })
+      : await run(
+          process.execPath,
+          [path.join(projectRoot, "node_modules/typescript/bin/tsc"), "--noEmit"],
+          { cwd: projectRoot },
+        );
     if (tscRes.exitCode === 0) {
       stages.push({ name: "TypeScript Typecheck", success: true });
       console.log(pc.green("  ✓ TypeScript compiled with zero type errors."));
@@ -87,7 +101,7 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
       stages.push({
         name: "TypeScript Typecheck",
         success: false,
-        evidence: tscRes.stdout || tscRes.stderr,
+        evidence: tscRes.stderr + tscRes.stdout,
       });
       console.log(pc.red("  ✗ TypeScript compilation reported type errors."));
     }
@@ -99,8 +113,21 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
     });
   }
 
-  // Stage 4: Mozole Design Token & A11y Contract Audit
-  console.log(pc.bold("\n4. Running Mozole Design Contract & A11y Audit..."));
+  if (!options.skipBuild) {
+    console.log(pc.bold("\n4. Building production output..."));
+    try {
+      const build = await run("npm", ["run", "build"], { cwd: projectRoot });
+      stages.push({
+        name: "Production Build",
+        success: build.exitCode === 0,
+        evidence: build.stdout + build.stderr,
+      });
+    } catch (error) {
+      stages.push({ name: "Production Build", success: false, message: String(error) });
+    }
+  }
+
+  console.log(pc.bold("\n5. Running Mozole Design Contract & A11y Audit..."));
   try {
     await testCommand({ cwd: projectRoot, type: "all" });
     stages.push({ name: "Design Contract & A11y Audit", success: true });
@@ -110,6 +137,21 @@ export async function verifyCommand(options: VerifyOptions = {}): Promise<boolea
       success: false,
       message: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  // Stage 6: Live Headless DOM Geometry & Trace Probe (if requested)
+  if (options.withProbe) {
+    console.log(pc.bold("\n6. Running Live Headless DOM Geometry & Trace Probe..."));
+    try {
+      await testCommand({ cwd: projectRoot, type: "probe" });
+      stages.push({ name: "Live DOM Geometry Probe", success: true });
+    } catch (err: unknown) {
+      stages.push({
+        name: "Live DOM Geometry Probe",
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // Summary Report

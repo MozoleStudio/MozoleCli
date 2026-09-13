@@ -17,6 +17,9 @@ export async function repomapCommand(options: RepomapCommandOptions = {}): Promi
   const cwd = options.cwd ?? process.cwd();
   const projectRoot = (await findProjectRoot(cwd)) ?? cwd;
   const action = options.action ?? "sync";
+  if (action !== "sync" && action !== "check") {
+    throw new Error(`Invalid repomap action '${action}'. Expected sync or check.`);
+  }
 
   const repomapDir = path.join(projectRoot, "docs", "repomap");
   if (!(await exists(repomapDir))) {

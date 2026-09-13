@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export async function exists(targetPath: string): Promise<boolean> {
@@ -31,7 +32,7 @@ export async function atomicWrite(
   const dir = path.dirname(targetPath);
   await ensureDir(dir);
 
-  const tempFile = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
+  const tempFile = `${targetPath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     await writeFile(tempFile, content, {
       encoding: typeof content === "string" ? "utf8" : undefined,
@@ -49,12 +50,35 @@ export async function writeFiles(
   files: Record<string, string | Buffer>,
   overwrite = false,
 ): Promise<string[]> {
+  const resolvedRootDir = await realpath(rootDir).catch(() => path.resolve(rootDir));
+  const resolvedRootPrefix = resolvedRootDir.endsWith(path.sep)
+    ? resolvedRootDir
+    : resolvedRootDir + path.sep;
+
   const written: string[] = [];
   for (const [relativePath, content] of Object.entries(files)) {
     if (path.isAbsolute(relativePath) || relativePath.split(/[\\/]/).includes("..")) {
       throw new Error(`Unsafe relative path specified: ${relativePath}`);
     }
-    const fullPath = path.join(rootDir, ...relativePath.split("/"));
+
+    const segments = relativePath.split(/[\\/]/);
+    let current = path.resolve(rootDir);
+    for (let i = 0; i < segments.length - 1; i++) {
+      current = path.join(current, segments[i]);
+      try {
+        const real = await realpath(current);
+        if (real !== resolvedRootDir && !real.startsWith(resolvedRootPrefix)) {
+          throw new Error(`Unsafe relative path specified (symlink escape): ${relativePath}`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          break;
+        }
+        throw error;
+      }
+    }
+
+    const fullPath = path.join(rootDir, ...segments);
     if (!overwrite && (await exists(fullPath))) {
       continue;
     }
@@ -64,8 +88,53 @@ export async function writeFiles(
   return written;
 }
 
+const RESERVED_NAMES = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  "public",
+  "src",
+  "package.json",
+  "package-lock.json",
+  "favicon.ico",
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9",
+]);
+
 export function isSafeProjectName(name: string): boolean {
-  if (!name || name === "." || name.includes("/") || name.includes("\\")) {
+  if (
+    !name ||
+    name === "." ||
+    name === ".." ||
+    name.includes("/") ||
+    name.includes("\\") ||
+    name.includes("\0")
+  ) {
+    return false;
+  }
+  const normalized = name.toLowerCase().trim();
+  const baseWithoutExt = normalized.split(".")[0];
+  if (RESERVED_NAMES.has(normalized) || RESERVED_NAMES.has(baseWithoutExt)) {
     return false;
   }
   return /^[a-z0-9][a-z0-9._-]*$/i.test(name);

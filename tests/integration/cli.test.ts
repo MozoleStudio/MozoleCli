@@ -10,6 +10,7 @@ import { prototypeInit } from "../../src/commands/prototype.js";
 import { repomapCommand } from "../../src/commands/repomap.js";
 import { testCommand } from "../../src/commands/test.js";
 import { exists } from "../../src/utils/fs.js";
+import { run } from "../../src/utils/process.js";
 
 describe("CLI Integration Suite", () => {
   let tmpDir: string;
@@ -20,6 +21,61 @@ describe("CLI Integration Suite", () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("rejects invalid command options without creating a project or passing QA", async () => {
+    const targetDir = path.join(tmpDir, "invalid");
+    await expect(
+      createNewProject({ name: "invalid", targetDir, backend: "ruby" as "php" }),
+    ).rejects.toThrow("Invalid backend");
+    expect(await exists(targetDir)).toBe(false);
+    await expect(testCommand({ cwd: tmpDir, type: "typo" as "all" })).rejects.toThrow(
+      "Invalid test type",
+    );
+    await expect(repomapCommand({ cwd: tmpDir, action: "typo" as "sync" })).rejects.toThrow(
+      "Invalid repomap action",
+    );
+  });
+
+  it("rejects future phase reopening and malformed status without changing state", async () => {
+    await adoptProject({ targetDir: tmpDir });
+    await expect(phaseCommand({ cwd: tmpDir, action: "reopen", phaseId: "10" })).rejects.toThrow(
+      "completed phase",
+    );
+    expect((await getProjectPhaseStatus(tmpDir)).currentPhase).toBe("00");
+    const statusPath = path.join(tmpDir, "docs/phases/status.md");
+    await fs.writeFile(statusPath, "Invalid status");
+    await expect(phaseCommand({ cwd: tmpDir, action: "next" })).rejects.toThrow(
+      "Invalid current phase",
+    );
+    expect(await fs.readFile(statusPath, "utf8")).toBe("Invalid status");
+  });
+
+  it("restores phase content and staged changes when a commit hook rejects advancement", async () => {
+    await adoptProject({ targetDir: tmpDir });
+    await run("git", ["init"], { cwd: tmpDir });
+    await run("git", ["config", "user.name", "Test User"], { cwd: tmpDir });
+    await run("git", ["config", "user.email", "test@example.com"], { cwd: tmpDir });
+    await fs.writeFile(path.join(tmpDir, "staged.txt"), "keep staged");
+    await run("git", ["add", "staged.txt"], { cwd: tmpDir });
+    const beforeIndex = await run("git", ["write-tree"], { cwd: tmpDir });
+    const before = await getProjectPhaseStatus(tmpDir);
+    await fs.writeFile(path.join(tmpDir, ".git/hooks/pre-commit"), "#!/bin/sh\nexit 1\n", {
+      mode: 0o755,
+    });
+    await expect(phaseCommand({ cwd: tmpDir, action: "next" })).rejects.toThrow("status restored");
+    expect((await getProjectPhaseStatus(tmpDir)).content).toBe(before.content);
+    expect((await run("git", ["write-tree"], { cwd: tmpDir })).stdout).toBe(beforeIndex.stdout);
+  });
+
+  it("audits nested prerendered pages instead of silently skipping framework output", async () => {
+    await adoptProject({ targetDir: tmpDir });
+    await fs.mkdir(path.join(tmpDir, "build/client/about"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, "build/client/about/index.html"),
+      '<html lang="en"><body><main><img src="missing-alt.png"></main></body></html>',
+    );
+    await expect(testCommand({ cwd: tmpDir, type: "a11y" })).rejects.toThrow("violations");
   });
 
   it("initializes a prototype repository workspace and creates client projects", async () => {

@@ -130,19 +130,19 @@ const repomapCmd = defineCommand({
 const testCmd = defineCommand({
   meta: {
     name: "test",
-    description: "Run Mozole quality test suites (contract, a11y, or all)",
+    description: "Run Mozole quality test suites (contract, a11y, probe, or all)",
   },
   args: {
     type: {
       type: "positional",
-      description: "Test type: 'contract', 'a11y', or 'all'",
+      description: "Test type: 'contract', 'a11y', 'probe', or 'all'",
       required: false,
       default: "all",
     },
   },
   async run({ args }) {
     await testCommand({
-      type: (args.type as "contract" | "a11y" | "all") || "all",
+      type: (args.type as "contract" | "a11y" | "probe" | "all") || "all",
     });
   },
 });
@@ -150,10 +150,19 @@ const testCmd = defineCommand({
 const verifyCmd = defineCommand({
   meta: {
     name: "verify",
-    description: "Run full deterministic verification (lint, typecheck, contracts, AI trace)",
+    description:
+      "Run full deterministic verification (lint, typecheck, contracts, AI trace, optional probe)",
   },
-  async run() {
-    const passed = await verifyCommand();
+  args: {
+    probe: {
+      type: "boolean",
+      description: "Also run headless live DOM geometry & trace probe",
+      required: false,
+      default: false,
+    },
+  },
+  async run({ args }) {
+    const passed = await verifyCommand({ withProbe: Boolean(args.probe) });
     if (!passed) {
       process.exit(1);
     }

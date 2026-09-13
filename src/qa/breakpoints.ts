@@ -28,18 +28,22 @@ export function extractBreakpointBoundaries(
 ): number[] {
   const min = options?.minWidth ?? 320;
   const max = options?.maxWidth ?? 2560;
-  const boundaries = new Set<number>([320, 375, 390, 768, 1024, 1280, 1440, 1920]);
+  const boundaries = new Set<number>(
+    STANDARD_VIEWPORTS.map((viewport) => viewport.width).filter(
+      (width) => width >= min && width <= max,
+    ),
+  );
 
   for (const css of cssSources) {
     try {
       const root = postcss.parse(css);
       root.walkAtRules("media", (rule) => {
         const matches = rule.params.matchAll(
-          /(?:min|max)-width\s*:\s*(\d+(?:\.\d+)?)(px|rem|em)/gi,
+          /(?:(?:min|max)-width\s*:|\bwidth\s*(?:<=?|>=?|=))\s*(\d+(?:\.\d+)?)(px|rem|em)\b|(\d+(?:\.\d+)?)(px|rem|em)\s*(?:<=?|>=?)\s*(?=width\b)/gi,
         );
         for (const match of matches) {
-          const rawVal = Number.parseFloat(match[1]);
-          const unit = match[2].toLowerCase();
+          const rawVal = Number.parseFloat(match[1] ?? match[3]);
+          const unit = (match[2] ?? match[4]).toLowerCase();
           const point = Math.round(rawVal * (unit === "px" ? 1 : 16));
 
           for (const delta of [-1, 0, 1]) {

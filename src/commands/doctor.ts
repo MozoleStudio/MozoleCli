@@ -1,5 +1,6 @@
 import net from "node:net";
 import pc from "picocolors";
+import { findLocalChromium } from "../utils/browser.js";
 import { run } from "../utils/process.js";
 import { CLI_VERSION } from "../version.js";
 
@@ -56,7 +57,27 @@ export async function doctorCommand(): Promise<void> {
     console.log(pc.yellow("  ! PHP: Not installed in PATH. (Optional for pure frontend)"));
   }
 
-  // 4. Ports Check
+  // 4. Headless Browser / Chromium Engine
+  try {
+    const browser = await findLocalChromium();
+    if (browser) {
+      console.log(
+        pc.green(
+          `  ✓ Browser Engine: ${browser.name}${browser.version ? ` (${browser.version})` : ""} at ${browser.executablePath}`,
+        ),
+      );
+    } else {
+      console.log(
+        pc.yellow(
+          "  ! Browser Engine: No local Brave/Chromium detected. (Will auto-provision Playwright Chromium when probe runs)",
+        ),
+      );
+    }
+  } catch {
+    console.log(pc.yellow("  ! Browser Engine: Detection failed"));
+  }
+
+  // 5. Ports Check
   console.log(pc.bold("\nNetwork Port Availability:"));
   for (const port of [5173, 3000, 8080]) {
     const available = await isPortAvailable(port);

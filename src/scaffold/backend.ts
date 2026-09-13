@@ -39,15 +39,16 @@ export function generatePhpMailer(): string {
 defined('MOZOLE_SECURE') or die(json_encode(['error' => 'Direct access prohibited']));
 
 function mozole_send_mail(array $config, string $fromEmail, string $name, string $subject, string $body): bool {
-    $to = $config['mail_to'];
-    $cleanSubject = $config['mail_subject_prefix'] . str_replace(["\\r", "\\n"], '', $subject);
+    $to = filter_var($config['mail_to'], FILTER_VALIDATE_EMAIL);
+    if (!$to) return false;
+    $cleanSubject = $config['mail_subject_prefix'] . str_replace(["\\r", "\\n", "\\0"], '', $subject);
     
     // Prevent email header injection
     $cleanFromEmail = filter_var($fromEmail, FILTER_VALIDATE_EMAIL);
     if (!$cleanFromEmail) {
         return false;
     }
-    $cleanName = str_replace(["\\r", "\\n"], '', $name);
+    $cleanName = str_replace(["\\r", "\\n", "\\0"], '', $name);
 
     $headers = [];
     $headers[] = 'MIME-Version: 1.0';
@@ -119,22 +120,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// 2. Referer Verification
-$referer = $_SERVER['HTTP_REFERER'] ?? '';
-if (!empty($referer)) {
-    $refererHost = parse_url($referer, PHP_URL_HOST);
-    $matched = false;
-    foreach ($config['allowed_origins'] as $allowed) {
-        if (parse_url($allowed, PHP_URL_HOST) === $refererHost) {
-            $matched = true;
-            break;
-        }
-    }
-    if (!$matched) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Forbidden: Invalid referer']);
-        exit;
-    }
+// 2. Require a trusted Origin, or a full-origin Referer when Origin is absent.
+function mozole_origin(string $url): ?string {
+    $parts = parse_url($url);
+    if (!$parts || !isset($parts['scheme'], $parts['host'])) return null;
+    $scheme = strtolower($parts['scheme']);
+    if (!in_array($scheme, ['http', 'https'], true)) return null;
+    $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+    return $scheme . '://' . strtolower($parts['host']) . ':' . $port;
+}
+
+$source = $origin !== '' ? $origin : ($_SERVER['HTTP_REFERER'] ?? '');
+$sourceOrigin = mozole_origin($source);
+$allowedOrigins = array_map('mozole_origin', $config['allowed_origins']);
+if ($sourceOrigin === null || !in_array($sourceOrigin, $allowedOrigins, true)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Forbidden: Untrusted request origin']);
+    exit;
 }
 
 // 3. IP Rate Limiting
@@ -150,25 +152,39 @@ $now = time();
 $window = $config['rate_limit']['window_seconds'];
 $maxRequests = $config['rate_limit']['max_requests'];
 
-$timestamps = [];
-if (file_exists($rateFile)) {
-    $raw = @file_get_contents($rateFile);
-    if ($raw) {
-        $data = json_decode($raw, true);
-        if (is_array($data)) {
-            $timestamps = array_filter($data, fn($t) => ($now - $t) < $window);
-        }
-    }
-}
-
-if (count($timestamps) >= $maxRequests) {
-    http_response_code(429);
-    echo json_encode(['error' => 'Too many requests. Please wait a few minutes before trying again.']);
+// Keep the read, quota check and write under the same exclusive lock.
+$rateHandle = @fopen($rateFile, 'c+');
+if ($rateHandle === false || !flock($rateHandle, LOCK_EX)) {
+    if (is_resource($rateHandle)) fclose($rateHandle);
+    http_response_code(503);
+    echo json_encode(['error' => 'Rate limiter unavailable. Please try again later.']);
     exit;
 }
 
-$timestamps[] = $now;
-@file_put_contents($rateFile, json_encode($timestamps), LOCK_EX);
+try {
+    $raw = stream_get_contents($rateHandle);
+    $stored = json_decode($raw === false ? '' : $raw, true);
+    $timestamps = is_array($stored)
+        ? array_values(array_filter($stored, fn($t) => is_int($t) && $t > $now - $window))
+        : [];
+
+    if (count($timestamps) >= $maxRequests) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Too many requests. Please wait a few minutes before trying again.']);
+    } else {
+        $timestamps[] = $now;
+        $encoded = json_encode($timestamps);
+        rewind($rateHandle);
+        if (!ftruncate($rateHandle, 0) || fwrite($rateHandle, $encoded) !== strlen($encoded) || !fflush($rateHandle)) {
+            http_response_code(503);
+            echo json_encode(['error' => 'Rate limiter unavailable. Please try again later.']);
+        }
+    }
+} finally {
+    flock($rateHandle, LOCK_UN);
+    fclose($rateHandle);
+}
+if (http_response_code() >= 400) exit;
 
 // 4. Payload Parsing
 $rawInput = file_get_contents('php://input');
@@ -179,9 +195,9 @@ if (!is_array($data)) {
     $data = $_POST;
 }
 
-// 5. Honeypot Verification
+// 5. Honeypot Verification (strict check against empty string or numeric zero)
 $honeyField = $config['honeypot_field'];
-if (!empty($data[$honeyField])) {
+if (isset($data[$honeyField]) && trim((string)$data[$honeyField]) !== '') {
     // Silently succeed for bots without sending email
     http_response_code(200);
     echo json_encode(['success' => true, 'message' => 'Message delivered.']);
@@ -189,14 +205,33 @@ if (!empty($data[$honeyField])) {
 }
 
 // 6. Input Sanitization & Validation
+foreach (['name', 'email', 'subject', 'message'] as $field) {
+    if (isset($data[$field]) && !is_string($data[$field])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Contact fields must be strings.']);
+        exit;
+    }
+}
+
+// PCRE Unicode counting works without the optional mbstring extension.
+function mozole_length(string $value): int {
+    $count = preg_match_all('/./us', $value);
+    return $count === false ? PHP_INT_MAX : $count;
+}
 $name = trim($data['name'] ?? '');
 $email = trim($data['email'] ?? '');
 $subject = trim($data['subject'] ?? 'Website Inquiry');
 $message = trim($data['message'] ?? '');
 
-if (empty($name) || mb_strlen($name, 'UTF-8') > 120) {
+if (empty($name) || mozole_length($name) > 120) {
     http_response_code(400);
     echo json_encode(['error' => 'A valid name is required (max 120 characters).']);
+    exit;
+}
+
+if (mozole_length($subject) > 200) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Subject line is too long (max 200 characters).']);
     exit;
 }
 
@@ -206,7 +241,7 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit;
 }
 
-if (empty($message) || mb_strlen($message, 'UTF-8') > 5000) {
+if (empty($message) || mozole_length($message) > 5000) {
     http_response_code(400);
     echo json_encode(['error' => 'Message body is required (max 5000 characters).']);
     exit;
@@ -219,12 +254,10 @@ if ($sent) {
     http_response_code(200);
     echo json_encode(['success' => true, 'message' => 'Your message has been sent successfully.']);
 } else {
-    // In local dev without sendmail, log and report graceful result
-    http_response_code(200);
+    http_response_code(502);
     echo json_encode([
-        'success' => true,
-        'message' => 'Message accepted (mail transport logged).',
-        'dev_notice' => 'Mail transport returned fallback status; verify server sendmail daemon in production.'
+        'success' => false,
+        'error' => 'Message could not be sent. Please try again later.'
     ]);
 }
 `;

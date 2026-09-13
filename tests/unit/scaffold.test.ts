@@ -6,6 +6,7 @@ import { auditHtmlA11y } from "../../src/qa/a11y.js";
 import { auditCssContracts } from "../../src/qa/contract.js";
 import { scaffoldNewProject } from "../../src/scaffold/index.js";
 import { scanProjectForAiTraces } from "../../src/utils/ai-trace.js";
+import { run } from "../../src/utils/process.js";
 
 describe("scaffoldNewProject", () => {
   let tmpDir: string;
@@ -48,7 +49,8 @@ describe("scaffoldNewProject", () => {
       path.join(projectDir, "src", "styles", "tokens.css"),
       "utf8",
     );
-    expect(tokensCss).toContain("@theme");
+    expect(tokensCss).toContain('@import "tailwindcss"');
+    expect(tokensCss).toContain("@theme static");
     expect(tokensCss).toContain("--color-primary:");
 
     // Verify token CSS against Mozole contract audit
@@ -79,6 +81,17 @@ describe("scaffoldNewProject", () => {
     // 5. Zero AI Trace Check across entire project
     const traces = await scanProjectForAiTraces(projectDir);
     expect(traces).toEqual([]);
+    const routerConfig = await fs.readFile(path.join(projectDir, "react-router.config.ts"), "utf8");
+    expect(routerConfig).toContain('appDirectory: "src"');
+    expect(routerConfig).toContain("ssr: false");
+    for (const route of ["home", "about", "contact"]) {
+      expect(await fs.readFile(path.join(projectDir, "src/routes.ts"), "utf8")).toContain(
+        `routes/${route}.tsx`,
+      );
+      expect(await fs.readFile(path.join(projectDir, `src/routes/${route}.tsx`), "utf8")).toContain(
+        "<h1",
+      );
+    }
   });
 
   it("scaffolds a flagship creative project with Wouter and persistent Canvas", async () => {
@@ -106,4 +119,17 @@ describe("scaffoldNewProject", () => {
     const a11yResult = auditHtmlA11y([{ file: "index.html", html: indexHtml }]);
     expect(a11yResult.errors).toEqual([]);
   });
+
+  it.each([false, true])(
+    "emits source that passes the generated Biome configuration (flagship=%s)",
+    async (flagship) => {
+      await scaffoldNewProject({ targetDir: tmpDir, name: "lint-site", flagship, initGit: false });
+      const result = await run(
+        process.execPath,
+        [path.resolve("node_modules/@biomejs/biome/bin/biome"), "check", "src"],
+        { cwd: tmpDir },
+      );
+      expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+    },
+  );
 });

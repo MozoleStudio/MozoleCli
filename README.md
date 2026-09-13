@@ -30,7 +30,7 @@
 
 ```bash
 # Clone and install dependencies
-git clone git@github.com:mozolestudio/cli.git
+git clone git@github.com:mozolestudio/MozoleCli.git
 cd MozoleCli
 npm install
 
@@ -46,7 +46,7 @@ npm run dev -- --help
 ## Command Reference
 
 ### `mozole new <name> [--flagship] [--backend=php|node]`
-Generates a complete, verified client project adhering to all Mozole Studio governance rules and design tokens.
+Generates a client project with Mozole Studio governance and canonical design tokens. Install its dependencies with `npm install`, then run `mozole verify` to check the generated project in your environment.
 
 ```bash
 # Standard React Router 7 + SSG + Tailwind v4 project
@@ -66,25 +66,35 @@ Adopts an existing web project into Mozole Studio governance, injecting `AGENTS.
 Manages project progression through the 10-step atomic development lifecycle:
 
 - `mozole phase status` — Displays visual checklist and status for all phases.
-- `mozole phase next` — Validates criteria, creates a conventional commit (`feat(phase-XX): ...`), and unlocks the next phase.
+- `mozole phase next` — Advances one phase and creates a conventional commit (`feat(phase-XX): ...`) when Git is initialized. Complete the checklist and run `mozole verify` first; checklist completion is a developer responsibility. Failed commits restore the previous phase file and Git index.
 - `mozole phase reopen <id>` — Reopens a completed phase for post-launch maintenance.
 
 ### `mozole repomap [sync|check]`
 Synchronizes and audits the `docs/repomap/` architectural index, component registry, and route catalog.
 
-### `mozole test [contract|a11y|all]`
-Executes Mozole Quality Kit static and headless verification suites.
+### `mozole test [contract|a11y|probe|all]`
+Executes Mozole Quality Kit verification suites:
+- `mozole test contract` — PostCSS AST design token contract audit (prohibits literal colors, `transition: all`, fixed viewport dimensions).
+- `mozole test a11y` — Static HTML and accessibility landmark hierarchy validation.
+- `mozole test probe` — Headless live DOM geometry and trace runner. Discovers local Brave/Chromium (or auto-provisions Playwright Chromium if absent). Measures live bounding boxes, horizontal overflow on mobile viewports (320px+), text clipping, touch targets (<24px), prefers-reduced-motion violations, and 200% text-zoom reflow stress. Strictly zero raster screenshots (`screenshots: false, snapshots: true`); emits full interactive trace packages to `docs/qa/trace.zip` for inspection via [trace.playwright.dev](https://trace.playwright.dev).
+- `mozole test all` (default) — Executes static contract and accessibility audits.
 
-### `mozole verify`
+### `mozole verify [--probe]`
 The authoritative, multi-stage deterministic gate required before completing agentic tasks:
 1. AI Trace Scanner (strictly prohibits synthetic watermarks and bot co-author trailers)
 2. Biome lint & code style check
-3. TypeScript compiler typecheck (`tsc --noEmit`)
-4. PostCSS design token contract audit
-5. Accessibility & landmark hierarchy validation
+3. Project `typecheck` script (including React Router type generation), or local TypeScript compiler
+4. Production build (`npm run build`)
+5. PostCSS design token contract audit
+6. Accessibility & landmark hierarchy validation against built HTML
+7. *(Optional with `--probe`)* Live headless DOM geometry & trace probe across critical viewports
+
+Biome and TypeScript must be installed locally; verification never downloads missing CLI tools with `npx`. Standard projects emit static pages for `/`, `/about`, and `/contact` without requiring a Node server in production. See the [React Router pre-rendering documentation](https://reactrouter.com/how-to/pre-rendering) for hosting configuration.
+
+The PHP contact backend requires an allowed Origin or a Referer with the same scheme, host and port as an allowed origin. Requests without either are rejected. Rate-limit storage errors return HTTP 503; mail transport failures return HTTP 502 with `success: false`. Configure `api/config.php` and the hosting mail transport before accepting real submissions.
 
 ### `mozole doctor`
-Diagnoses workstation prerequisites, Node.js version (>= 20), Git, PHP 8.1+ status, and network port availability.
+Diagnoses workstation prerequisites: Node.js (>= 20), Git, PHP 8.1+ status, local Chromium/Brave browser engine availability, and network port availability.
 
 ### `mozole ui` (or bare `mozole`)
 Launches the interactive terminal cockpit.

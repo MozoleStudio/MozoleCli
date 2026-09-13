@@ -79,7 +79,7 @@ if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
       <App />
-    </StrictMode>
+    </StrictMode>,
   );
 }
 `;
@@ -88,10 +88,6 @@ if (rootElement) {
 export function generateFlagshipCanvasLayer(): string {
   return `import { useEffect, useRef } from "react";
 
-/**
- * Persistent Background Canvas Layer
- * Renders ambient graphics independently from route navigation.
- */
 export function CanvasLayer() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -101,57 +97,59 @@ export function CanvasLayer() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frameId = 0;
+    let time = 0;
+    const tokens = getComputedStyle(document.documentElement);
+    const startColor = tokens.getPropertyValue("--color-canvas-start").trim();
+    const endColor = tokens.getPropertyValue("--color-canvas-end").trim();
 
-    const onResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-    window.addEventListener("resize", onResize);
-
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReducedMotion) {
-      // Draw static subtle ambient gradient
-      ctx.fillStyle = "rgba(59, 130, 246, 0.03)";
-      ctx.fillRect(0, 0, width, height);
-      return () => window.removeEventListener("resize", onResize);
-    }
-
-    let t = 0;
-    const render = () => {
-      t += 0.01;
+    const draw = () => {
+      const { width, height } = canvas;
       ctx.clearRect(0, 0, width, height);
-      
-      const grad = ctx.createRadialGradient(
-        width * 0.5 + Math.sin(t) * 100,
-        height * 0.3 + Math.cos(t * 0.8) * 80,
-        50,
+      const gradient = ctx.createRadialGradient(
+        width * (0.5 + Math.sin(time) * 0.08),
+        height * (0.3 + Math.cos(time * 0.8) * 0.08),
+        width * 0.04,
         width * 0.5,
         height * 0.5,
-        width * 0.8
+        width * 0.8,
       );
-      grad.addColorStop(0, "rgba(59, 130, 246, 0.06)");
-      grad.addColorStop(1, "rgba(9, 10, 15, 0)");
-
-      ctx.fillStyle = grad;
+      gradient.addColorStop(0, startColor);
+      gradient.addColorStop(1, endColor);
+      ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
-
-      animId = requestAnimationFrame(render);
     };
-
-    render();
-
+    const render = () => {
+      time += 0.01;
+      draw();
+      frameId = requestAnimationFrame(render);
+    };
+    const onResize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    };
+    const onPreferenceChange = () => {
+      cancelAnimationFrame(frameId);
+      if (preference.matches) draw();
+      else frameId = requestAnimationFrame(render);
+    };
+    onResize();
+    onPreferenceChange();
+    window.addEventListener("resize", onResize);
+    preference.addEventListener("change", onPreferenceChange);
     return () => {
       window.removeEventListener("resize", onResize);
-      cancelAnimationFrame(animId);
+      preference.removeEventListener("change", onPreferenceChange);
+      cancelAnimationFrame(frameId);
     };
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
+      tabIndex={-1}
       aria-hidden="true"
       className="fixed inset-0 pointer-events-none z-0"
     />
@@ -161,34 +159,42 @@ export function CanvasLayer() {
 }
 
 export function generateFlagshipApp(): string {
-  return `import { useEffect } from "react";
-import Lenis from "lenis";
+  return `import Lenis from "lenis";
+import { useEffect } from "react";
 import { Link, Route, Switch } from "wouter";
 import { CanvasLayer } from "./components/creative/CanvasLayer";
 import { Button } from "./components/ui/Button";
 
 export default function App() {
   useEffect(() => {
-    // Respect user motion preference
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    });
-
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-    const frameId = requestAnimationFrame(raf);
-
-    return () => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let lenis: Lenis | undefined;
+    let frameId = 0;
+    const stop = () => {
       cancelAnimationFrame(frameId);
-      lenis.destroy();
+      lenis?.destroy();
+      lenis = undefined;
+    };
+    const update = () => {
+      stop();
+      if (preference.matches) return;
+      const instance = new Lenis({
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - 2 ** (-10 * t)),
+        smoothWheel: true,
+      });
+      lenis = instance;
+      const raf = (time: number) => {
+        instance.raf(time);
+        frameId = requestAnimationFrame(raf);
+      };
+      frameId = requestAnimationFrame(raf);
+    };
+    update();
+    preference.addEventListener("change", update);
+    return () => {
+      preference.removeEventListener("change", update);
+      stop();
     };
   }, []);
 
@@ -207,14 +213,26 @@ export default function App() {
       {/* Top Header */}
       <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-[var(--spacing-container-max)] mx-auto px-[var(--spacing-container-gutter)] h-16 flex items-center justify-between">
-          <Link href="/" className="text-[var(--text-lg)] font-bold tracking-tight text-[var(--color-foreground)]">
+          <Link
+            href="/"
+            className="text-[var(--text-lg)] font-bold tracking-tight text-[var(--color-foreground)]"
+          >
             Flagship Studio
           </Link>
-          <nav aria-label="Main Navigation" className="flex items-center gap-6 text-[var(--text-sm)]">
-            <Link href="/" className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors">
+          <nav
+            aria-label="Main Navigation"
+            className="flex items-center gap-6 text-[var(--text-sm)]"
+          >
+            <Link
+              href="/"
+              className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors"
+            >
               Home
             </Link>
-            <Link href="/showcase" className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors">
+            <Link
+              href="/showcase"
+              className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors"
+            >
               Showcase
             </Link>
           </nav>
@@ -229,9 +247,9 @@ export default function App() {
           <Route>
             <div className="py-20 px-[var(--spacing-container-gutter)] max-w-[var(--spacing-container-max)] mx-auto text-center">
               <h1 className="text-[var(--text-3xl)] font-bold mb-4">404 - Page Not Found</h1>
-              <Link href="/">
-                <Button variant="primary">Return Home</Button>
-              </Link>
+              <Button asChild variant="primary">
+                <Link href="/">Return Home</Link>
+              </Button>
             </div>
           </Route>
         </Switch>
@@ -255,11 +273,16 @@ function HomeView() {
           Creative Engineering & Visual Systems
         </h1>
         <p className="text-[var(--text-xl)] text-[var(--color-muted-foreground)] leading-relaxed">
-          Interactive web experiences with headless routing, smooth scrolling, and dynamic graphics layers.
+          Interactive web experiences with headless routing, smooth scrolling, and dynamic graphics
+          layers.
         </p>
         <div className="flex gap-4 pt-4">
-          <Button variant="primary" size="lg">Explore Showcase</Button>
-          <Button variant="outline" size="lg">Architecture</Button>
+          <Button variant="primary" size="lg">
+            Explore Showcase
+          </Button>
+          <Button variant="outline" size="lg">
+            Architecture
+          </Button>
         </div>
       </div>
     </section>

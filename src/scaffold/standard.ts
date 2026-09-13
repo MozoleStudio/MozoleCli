@@ -9,8 +9,8 @@ export function generateStandardPackageJson(projectName: string): string {
     scripts: {
       dev: "react-router dev",
       build: "react-router build",
-      start: "react-router-serve ./build/server/index.js",
-      typecheck: "tsc --noEmit",
+      preview: "vite preview",
+      typecheck: "react-router typegen && tsc --noEmit",
       verify: "mozole verify",
     },
     dependencies: {
@@ -56,7 +56,8 @@ export function generateStandardRouterConfig(): string {
   return `import type { Config } from "@react-router/dev/config";
 
 export default {
-  ssr: true,
+  appDirectory: "src",
+  ssr: false,
   async prerender() {
     return ["/", "/about", "/contact"];
   },
@@ -112,8 +113,8 @@ export function generateStandardBiomeJson(): string {
 export function generateStandardRoot(): string {
   return `import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import "./styles/tokens.css";
-import { Header } from "./components/layout/Header";
 import { Footer } from "./components/layout/Footer";
+import { Header } from "./components/layout/Header";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -125,7 +126,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <a href="#main-content" className="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-[var(--color-primary)] focus:text-[var(--color-primary-foreground)] focus:rounded-[var(--radius-sm)]">
+        <a
+          href="#main-content"
+          className="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-[var(--color-primary)] focus:text-[var(--color-primary-foreground)] focus:rounded-[var(--radius-sm)]"
+        >
           Skip to main content
         </a>
         <Header />
@@ -147,13 +151,16 @@ export default function App() {
 }
 
 export function generateStandardRoutesHome(): string {
-  return `import type { Route } from "./+types/home";
-import { Button } from "../components/ui/Button";
+  return `import { Button } from "../components/ui/Button";
+import type { Route } from "./+types/home";
 
 export function meta(_args: Route.MetaArgs) {
   return [
     { title: "Mozole Studio - Digital Engineering" },
-    { name: "description", content: "Web applications and design systems engineered with React Router and Tailwind CSS." },
+    {
+      name: "description",
+      content: "Web applications and design systems engineered with React Router and Tailwind CSS.",
+    },
   ];
 }
 
@@ -165,7 +172,8 @@ export default function Home() {
           Digital Engineering & Design Systems
         </h1>
         <p className="text-[var(--text-lg)] text-[var(--color-muted-foreground)] leading-relaxed">
-          Production web applications built with bespoke UI primitives, strict design tokens, and static pre-rendering.
+          Production web applications built with bespoke UI primitives, strict design tokens, and
+          static pre-rendering.
         </p>
         <div className="flex gap-4 pt-4">
           <Button variant="primary">Explore Projects</Button>
@@ -185,17 +193,41 @@ export function Header() {
   return (
     <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-[var(--spacing-container-max)] mx-auto px-[var(--spacing-container-gutter)] h-16 flex items-center justify-between">
-        <NavLink to="/" className="text-[var(--text-lg)] font-bold tracking-tight text-[var(--color-foreground)]">
+        <NavLink
+          to="/"
+          className="text-[var(--text-lg)] font-bold tracking-tight text-[var(--color-foreground)]"
+        >
           Mozole Studio
         </NavLink>
         <nav aria-label="Main Navigation" className="flex items-center gap-6 text-[var(--text-sm)]">
-          <NavLink to="/" className={({ isActive }) => isActive ? "text-[var(--color-primary)] font-medium" : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"}>
+          <NavLink
+            to="/"
+            className={({ isActive }) =>
+              isActive
+                ? "text-[var(--color-primary)] font-medium"
+                : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+            }
+          >
             Home
           </NavLink>
-          <NavLink to="/about" className={({ isActive }) => isActive ? "text-[var(--color-primary)] font-medium" : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"}>
+          <NavLink
+            to="/about"
+            className={({ isActive }) =>
+              isActive
+                ? "text-[var(--color-primary)] font-medium"
+                : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+            }
+          >
             About
           </NavLink>
-          <NavLink to="/contact" className={({ isActive }) => isActive ? "text-[var(--color-primary)] font-medium" : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"}>
+          <NavLink
+            to="/contact"
+            className={({ isActive }) =>
+              isActive
+                ? "text-[var(--color-primary)] font-medium"
+                : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+            }
+          >
             Contact
           </NavLink>
         </nav>
@@ -220,40 +252,58 @@ export function generateStandardFooter(): string {
 }
 
 export function generateBespokeButton(): string {
-  return `import * as React from "react";
+  return `import { Slot } from "@radix-ui/react-slot";
+import * as React from "react";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  asChild?: boolean;
   variant?: "primary" | "outline" | "ghost";
   size?: "sm" | "md" | "lg";
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = "", variant = "primary", size = "md", type = "button", children, ...props }, ref) => {
-    const base = "inline-flex items-center justify-center font-medium transition-[background-color,border-color,color] cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-2 disabled:opacity-50 disabled:pointer-events-none rounded-[var(--radius-sm)]";
-    
+  (
+    {
+      asChild = false,
+      className = "",
+      variant = "primary",
+      size = "md",
+      type = "button",
+      children,
+      ...props
+    },
+    ref,
+  ) => {
+    const Component = asChild ? Slot : "button";
+    const base =
+      "inline-flex items-center justify-center font-medium transition-[background-color,border-color,color] cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-2 disabled:opacity-50 disabled:pointer-events-none rounded-[var(--radius-sm)]";
+
     const variants = {
-      primary: "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:bg-[var(--color-accent)]",
-      outline: "border border-[var(--color-border)] bg-transparent text-[var(--color-foreground)] hover:border-[var(--color-primary)]",
-      ghost: "bg-transparent text-[var(--color-foreground)] hover:bg-[var(--color-surface-elevated)]",
+      primary:
+        "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:bg-[var(--color-accent)]",
+      outline:
+        "border border-[var(--color-border)] bg-transparent text-[var(--color-foreground)] hover:border-[var(--color-primary)]",
+      ghost:
+        "bg-transparent text-[var(--color-foreground)] hover:bg-[var(--color-surface-elevated)]",
     };
 
     const sizes = {
-      sm: "h-8 px-3 text-[var(--text-xs)] min-h-[32px] min-w-[32px]",
-      md: "h-10 px-4 text-[var(--text-sm)] min-h-[40px] min-w-[40px]",
-      lg: "h-12 px-6 text-[var(--text-base)] min-h-[48px] min-w-[48px]",
+      sm: "h-8 px-3 text-[var(--text-xs)] min-h-8 min-w-8",
+      md: "h-10 px-4 text-[var(--text-sm)] min-h-10 min-w-10",
+      lg: "h-12 px-6 text-[var(--text-base)] min-h-12 min-w-12",
     };
 
     return (
-      <button
+      <Component
         ref={ref}
-        type={type}
+        type={asChild ? undefined : type}
         className={\`\${base} \${variants[variant]} \${sizes[size]} \${className}\`}
         {...props}
       >
         {children}
-      </button>
+      </Component>
     );
-  }
+  },
 );
 Button.displayName = "Button";
 `;
@@ -276,8 +326,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           type={type}
           aria-invalid={Boolean(error)}
           aria-describedby={error && id ? \`\${id}-error\` : undefined}
-          style={{ fontSize: "16px" }} // Floor of 16px strictly enforced to prevent iOS Safari auto-zoom
-          className={\`w-full h-10 px-3 bg-[var(--color-surface)] border \${
+          className={\`text-base w-full h-10 px-3 bg-[var(--color-surface)] border \${
             error ? "border-[var(--color-danger)]" : "border-[var(--color-border)]"
           } rounded-[var(--radius-sm)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] transition-[border-color] \${className}\`}
           {...props}
@@ -289,7 +338,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
       </div>
     );
-  }
+  },
 );
 Input.displayName = "Input";
 `;
@@ -315,6 +364,40 @@ export async function scaffoldStandardProject(
   const srcDir = path.join(projectRoot, "src");
   await atomicWrite(path.join(srcDir, "root.tsx"), generateStandardRoot());
   await atomicWrite(path.join(srcDir, "routes", "home.tsx"), generateStandardRoutesHome());
+  await atomicWrite(
+    path.join(srcDir, "routes.ts"),
+    `import { type RouteConfig, index, route } from "@react-router/dev/routes";
+
+export default [
+  index("routes/home.tsx"),
+  route("about", "routes/about.tsx"),
+  route("contact", "routes/contact.tsx"),
+] satisfies RouteConfig;
+`,
+  );
+  for (const [slug, title, content] of [
+    ["about", "About", "Digital products built with thoughtful design and engineering."],
+    ["contact", "Contact", "Get in touch to discuss your next project."],
+  ]) {
+    await atomicWrite(
+      path.join(srcDir, "routes", `${slug}.tsx`),
+      `export function meta() {
+  return [{ title: "${title} - Mozole Studio" }];
+}
+
+export default function Page() {
+  return (
+    <section className="py-20 px-[var(--spacing-container-gutter)] max-w-[var(--spacing-container-max)] mx-auto w-full">
+      <h1 className="text-4xl font-bold mb-6">${title}</h1>
+      <p className="text-base text-[var(--color-muted-foreground)]">
+        ${content}
+      </p>
+    </section>
+  );
+}
+`,
+    );
+  }
 
   // Components
   await atomicWrite(

@@ -164,8 +164,8 @@ export function generatePhasesStatusMd(currentPhase = "00"): string {
     content += `### Phase ${p.id}: ${p.name} ${statusBadge}\n`;
     content += `${p.description}\n\n`;
     for (const item of p.checklist) {
-      const mark = isCompleted ? "[x]" : " [ ]";
-      content += `-${mark} ${item}\n`;
+      const mark = isCompleted ? "[x]" : "[ ]";
+      content += `- ${mark} ${item}\n`;
     }
     content += "\n---\n\n";
   }

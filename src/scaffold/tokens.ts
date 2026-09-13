@@ -2,7 +2,9 @@ import path from "node:path";
 import { atomicWrite } from "../utils/fs.js";
 
 export function generateCanonicalTokensCss(): string {
-  return `@theme {
+  return `@import "tailwindcss";
+
+@theme static {
   /* Palette */
   --color-background: #090a0f;
   --color-foreground: #f8fafc;
@@ -14,6 +16,8 @@ export function generateCanonicalTokensCss(): string {
   --color-primary: #3b82f6;
   --color-primary-foreground: #ffffff;
   --color-accent: #60a5fa;
+  --color-canvas-start: rgba(59, 130, 246, 0.06);
+  --color-canvas-end: rgba(9, 10, 15, 0);
   --color-accent-foreground: #090a0f;
 
   --color-muted: #1e2230;
@@ -79,7 +83,12 @@ export function generateCanonicalTokensCss(): string {
     flex-direction: column;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-display);
     font-weight: 700;
     letter-spacing: -0.02em;

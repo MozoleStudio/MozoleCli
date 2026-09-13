@@ -25,6 +25,9 @@ export async function scaffoldNewProject(options: ScaffoldOptions): Promise<void
     backend = "php",
     initGit: shouldInitGit = true,
   } = options;
+  if (backend !== "php" && backend !== "node") {
+    throw new Error(`Invalid backend '${backend}'. Expected php or node.`);
+  }
 
   if (!isSafeProjectName(name)) {
     throw new Error(

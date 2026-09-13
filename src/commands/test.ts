@@ -3,17 +3,21 @@ import path from "node:path";
 import pc from "picocolors";
 import { auditHtmlA11y } from "../qa/a11y.js";
 import { type CssSource, auditCssContracts } from "../qa/contract.js";
+import { runLiveGeometryProbe } from "../qa/runner.js";
 import { exists, findProjectRoot } from "../utils/fs.js";
 
 export interface TestCommandOptions {
-  type?: "contract" | "a11y" | "all";
   cwd?: string;
+  type?: "contract" | "a11y" | "probe" | "all";
 }
 
 export async function testCommand(options: TestCommandOptions = {}): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
   const projectRoot = (await findProjectRoot(cwd)) ?? cwd;
   const testType = options.type ?? "all";
+  if (!["contract", "a11y", "probe", "all"].includes(testType)) {
+    throw new Error(`Invalid test type '${testType}'. Expected contract, a11y, probe, or all.`);
+  }
 
   let hasFailures = false;
 
@@ -75,15 +79,34 @@ export async function testCommand(options: TestCommandOptions = {}): Promise<voi
     );
 
     const htmlSources: { file: string; html: string }[] = [];
+    async function collectHtml(dir: string): Promise<void> {
+      if (!(await exists(dir))) return;
+      for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) await collectHtml(full);
+        else if (
+          entry.isFile() &&
+          entry.name.endsWith(".html") &&
+          entry.name !== "__spa-fallback.html"
+        ) {
+          htmlSources.push({
+            file: path.relative(projectRoot, full),
+            html: await fs.readFile(full, "utf8"),
+          });
+        }
+      }
+    }
+    await collectHtml(path.join(projectRoot, "build", "client"));
+    if (htmlSources.length === 0) await collectHtml(path.join(projectRoot, "dist"));
     const indexHtmlPath = path.join(projectRoot, "index.html");
-    if (await exists(indexHtmlPath)) {
+    if (htmlSources.length === 0 && (await exists(indexHtmlPath))) {
       const html = await fs.readFile(indexHtmlPath, "utf8");
       htmlSources.push({ file: "index.html", html });
     }
 
     if (htmlSources.length === 0) {
       console.log(
-        pc.gray("  • No static HTML files to audit (framework mode will audit during build)."),
+        pc.yellow("  ! No HTML available for accessibility audit. Build the project first."),
       );
     } else {
       const result = auditHtmlA11y(htmlSources);
@@ -99,6 +122,14 @@ export async function testCommand(options: TestCommandOptions = {}): Promise<voi
       if (result.errors.length === 0) {
         console.log(pc.green("  ✓ Accessibility landmark hierarchy passed."));
       }
+    }
+  }
+
+  // 3. Live Headless DOM Geometry & Trace Probe (Separate command per policy)
+  if (testType === "probe") {
+    const probeRes = await runLiveGeometryProbe({ cwd: projectRoot });
+    if (!probeRes.success) {
+      hasFailures = true;
     }
   }
 

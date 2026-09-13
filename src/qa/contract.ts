@@ -1,4 +1,4 @@
-import postcss from "postcss";
+import postcss, { CssSyntaxError } from "postcss";
 
 export type FindingSeverity = "error" | "warn";
 
@@ -23,14 +23,25 @@ export interface CssSource {
   css: string;
 }
 
-const LITERAL_COLOR_REGEX = /#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\(/i;
+const LITERAL_COLOR_REGEX = /#[\da-f]{3,8}\b|\b(?:rgb|hsl|oklch|lab|lch|hwb|color|color-mix)a?\(/i;
 const FIXED_FRAME_REGEX = /^(?:375|390|414|768|810|834|1024|1280|1440|1920)px$/i;
 
 export function auditCssContracts(sources: CssSource[]): ContractAuditResult {
+  const errors: ContractFinding[] = [];
+  const warnings: ContractFinding[] = [];
   const parsedRoots = sources.map(({ file, css }) => {
     try {
       return { file, root: postcss.parse(css, { from: file }) };
-    } catch {
+    } catch (error) {
+      errors.push({
+        file,
+        line: error instanceof CssSyntaxError ? (error.line ?? 1) : 1,
+        selector: "<stylesheet>",
+        rule: "css-syntax",
+        severity: "error",
+        value: "",
+        message: error instanceof Error ? error.message : String(error),
+      });
       return { file, root: postcss.root() };
     }
   });
@@ -42,11 +53,8 @@ export function auditCssContracts(sources: CssSource[]): ContractAuditResult {
     });
   }
 
-  const errors: ContractFinding[] = [];
-  const warnings: ContractFinding[] = [];
-
   for (const { file, root } of parsedRoots) {
-    const isCanonicalTokenFile = file.endsWith("tokens.css") || file.endsWith("theme.css");
+    const isCanonicalTokenFile = file.replaceAll("\\", "/") === "src/styles/tokens.css";
 
     root.walkDecls((decl) => {
       const line = decl.source?.start?.line ?? 1;
@@ -104,17 +112,11 @@ export function auditCssContracts(sources: CssSource[]): ContractAuditResult {
         p = p.parent as { type: string; parent?: unknown; name?: string } | undefined;
       }
 
-      const isExempt =
-        isCanonicalTokenFile || inFontFace || inThemeAtRule || decl.prop.startsWith("--");
+      const isExempt = inFontFace || (isCanonicalTokenFile && inThemeAtRule);
 
       if (!isExempt) {
         // 1. Literal color check
-        if (
-          /^(?:color|background(?:-color)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|fill|stroke|box-shadow)$/i.test(
-            decl.prop,
-          ) &&
-          LITERAL_COLOR_REGEX.test(decl.value)
-        ) {
+        if (LITERAL_COLOR_REGEX.test(decl.value)) {
           addError(
             "literal-color",
             decl.value,
@@ -161,7 +163,10 @@ export function auditCssContracts(sources: CssSource[]): ContractAuditResult {
       }
 
       // 5. Transition all check (always prohibited for mobile performance)
-      if (decl.prop === "transition" && /^all\b/i.test(decl.value.trim())) {
+      if (
+        /^(?:transition|transition-property)$/i.test(decl.prop) &&
+        /(?:^|[\s,])all(?:$|[\s,])/i.test(decl.value)
+      ) {
         addError(
           "transition-all",
           decl.value,

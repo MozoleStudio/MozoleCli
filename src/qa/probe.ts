@@ -131,11 +131,12 @@ export function probeDOM(): ProbeResult {
     const style = window.getComputedStyle(el);
     const rect = el.getBoundingClientRect();
 
-    // Accessible offscreen text is intentionally clipped (.sr-only), not a defect
+    // Accessible offscreen text is intentionally clipped (.sr-only or skip-link), not a defect
     if (
-      rect.width <= 1 &&
-      rect.height <= 1 &&
-      (style.clip !== "auto" || style.clipPath !== "none")
+      (rect.width <= 1 &&
+        rect.height <= 1 &&
+        (style.clip !== "auto" || style.clipPath !== "none")) ||
+      el.matches(".sr-only, .skip-link:not(:focus)")
     ) {
       continue;
     }

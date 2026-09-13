@@ -36,7 +36,12 @@ export function auditHtmlA11y(sources: HtmlSource[]): A11yAuditResult {
   const errors: A11yFinding[] = [];
   const warnings: A11yFinding[] = [];
 
-  for (const { file, html } of sources) {
+  for (const { file, html: source } of sources) {
+    // Ignore inert markup in comments and raw-text elements while preserving line numbers.
+    const html = source.replace(
+      /<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      (match) => match.replace(/[^\n]/g, " "),
+    );
     const addError = (rule: string, element: string, message: string, line = 1) => {
       errors.push({ file, line, rule, severity: "error", element, message });
     };
@@ -59,7 +64,7 @@ export function auditHtmlA11y(sources: HtmlSource[]): A11yAuditResult {
       if (h1s.length === 0) {
         addError("single-h1", "<h1>", "Page missing top-level <h1> landmark heading.");
       } else if (h1s.length > 1) {
-        addWarn(
+        addError(
           "single-h1",
           "<h1>",
           `Page contains ${h1s.length} <h1> headings; exactly one landmark heading expected.`,
@@ -85,8 +90,8 @@ export function auditHtmlA11y(sources: HtmlSource[]): A11yAuditResult {
       // 4. Skip-to-content link
       const mainMatch = mains[0]?.[0];
       const mainId = mainMatch?.match(/\bid\s*=\s*["']([^"']+)["']/i)?.[1];
-      const skipLinkMatch = html.match(
-        /<a\b[^>]*\b(?:class=["'][^"']*\bskip-link\b|href=["']#([^"']+)["'][^>]*\bskip-link\b)[^>]*>/i,
+      const skipLinkMatch = Array.from(html.matchAll(/<a\b[^>]*>/gi)).find((match) =>
+        /\sclass\s*=\s*["'][^"']*\bskip-link\b[^"']*["']/i.test(match[0]),
       );
 
       if (mains.length === 1 && !skipLinkMatch) {
@@ -96,8 +101,8 @@ export function auditHtmlA11y(sources: HtmlSource[]): A11yAuditResult {
           "Page lacks an accessible skip-to-content keyboard link before primary navigation.",
         );
       } else if (skipLinkMatch && mainId) {
-        const skipHref = html.match(/<a\b[^>]*\bskip-link\b[^>]*\bhref=["']#([^"']+)["']/i)?.[1];
-        if (skipHref && skipHref !== mainId) {
+        const skipHref = skipLinkMatch[0].match(/\shref\s*=\s*["']#([^"']+)["']/i)?.[1];
+        if (skipHref !== mainId) {
           addError(
             "skip-link-target",
             "<a class='skip-link'>",
@@ -108,7 +113,9 @@ export function auditHtmlA11y(sources: HtmlSource[]): A11yAuditResult {
     }
 
     // 5. Unique IDs
-    const idMatches = Array.from(html.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi));
+    const idMatches = Array.from(html.matchAll(/<[^>]+>/g)).flatMap((tag) =>
+      Array.from(tag[0].matchAll(/\sid\s*=\s*["']([^"']+)["']/gi)),
+    );
     const seenIds = new Set<string>();
     const dupIds = new Set<string>();
     for (const match of idMatches) {
