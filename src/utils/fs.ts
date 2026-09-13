@@ -168,6 +168,12 @@ export async function findPrototypeRoot(startDir = process.cwd()): Promise<strin
   while (true) {
     const configPath = path.join(current, "mozole.config.json");
     if (await exists(configPath)) {
+      try {
+        const config = JSON.parse(await readFile(configPath, "utf8"));
+        if (!config.projectsDir || config.projectsDir === "projects") return current;
+      } catch {
+        return current;
+      }
       return current;
     }
     const manifestPath = path.join(current, "package.json");

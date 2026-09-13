@@ -2,11 +2,15 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand, runMain } from "citty";
+import { addComponents } from "./commands/add.js";
 import { adoptProject } from "./commands/adopt.js";
+import { optimizeAssets } from "./commands/assets.js";
+import { enableBackend } from "./commands/backend.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { createNewProject } from "./commands/new.js";
 import { phaseCommand } from "./commands/phase.js";
 import { prototypeInit } from "./commands/prototype.js";
+import { createRelease } from "./commands/release.js";
 import { repomapCommand } from "./commands/repomap.js";
 import { testCommand } from "./commands/test.js";
 import { uiCommand } from "./commands/ui.js";
@@ -44,21 +48,84 @@ const newCmd = defineCommand({
   },
 });
 
+const addCmd = defineCommand({
+  meta: { name: "add", description: "Add project-owned UI foundations" },
+  args: {
+    component: {
+      type: "positional",
+      required: false,
+      description: "Component, comma-separated names, or all",
+    },
+    list: { type: "boolean", description: "List component catalog", default: false },
+    path: { type: "string", description: "Project directory" },
+  },
+  async run({ args }) {
+    await addComponents({ components: args.component, list: args.list, cwd: args.path });
+  },
+});
+
+const assetsCmd = defineCommand({
+  meta: { name: "assets", description: "Optimize raster images into responsive AVIF/WebP assets" },
+  args: {
+    path: { type: "string", description: "Project directory" },
+    input: {
+      type: "string",
+      default: "assets/images",
+      description: "Project-relative source directory",
+    },
+    output: { type: "string", default: "public/media", description: "Destination under public/" },
+    widths: { type: "string", description: "Comma-separated widths; default 320 through 3840" },
+    quality: { type: "string", default: "78", description: "Encoder quality 1–100" },
+    base: { type: "string", default: "/", description: "Deployment base path, e.g. /client/" },
+  },
+  async run({ args }) {
+    await optimizeAssets({
+      cwd: args.path,
+      input: args.input,
+      output: args.output,
+      widths: args.widths,
+      quality: Number(args.quality),
+      base: args.base,
+    });
+  },
+});
+
+const releaseCmd = defineCommand({
+  meta: { name: "release", description: "Package static HTML and optional PHP API for deployment" },
+  args: {
+    path: { type: "string", description: "Project directory" },
+    from: { type: "string", description: "Custom static build directory" },
+    output: {
+      type: "string",
+      default: "release",
+      description: "Project-relative output name (ZIP adds .zip)",
+    },
+    format: { type: "string", default: "both", description: "zip, directory, or both" },
+    "skip-build": { type: "boolean", default: false, description: "Package existing build output" },
+  },
+  async run({ args }) {
+    await createRelease({
+      cwd: args.path,
+      from: args.from,
+      output: args.output,
+      format: args.format,
+      skipBuild: args["skip-build"],
+    });
+  },
+});
+
 const prototypeCmd = defineCommand({
   meta: {
     name: "prototype",
     description: "Manage prototype repository workspace",
   },
-  subCommands: {
-    init: defineCommand({
-      meta: {
-        name: "init",
-        description: "Initialize a new prototype workspace repository",
-      },
-      async run() {
-        await prototypeInit();
-      },
-    }),
+  args: {
+    action: {
+      type: "positional",
+      description: "Action: 'init' (default)",
+      required: false,
+      default: "init",
+    },
   },
   async run() {
     await prototypeInit();
@@ -68,9 +135,11 @@ const prototypeCmd = defineCommand({
 const adoptCmd = defineCommand({
   meta: {
     name: "adopt",
-    description: "Adopt an existing project into Mozole Studio governance",
+    description: "Adopt a Vite React project into Mozole architecture and tooling",
   },
   args: {
+    flagship: { type: "boolean", description: "Adopt as Flagship (Wouter, Motion, Lenis)" },
+    backend: { type: "string", description: "Enable php or node backend", default: "none" },
     path: {
       type: "positional",
       description: "Path to project root",
@@ -79,7 +148,22 @@ const adoptCmd = defineCommand({
     },
   },
   async run({ args }) {
-    await adoptProject({ targetDir: args.path });
+    await adoptProject({
+      targetDir: args.path,
+      flagship: args.flagship || undefined,
+      backend: args.backend as "none" | "php" | "node",
+    });
+  },
+});
+
+const backendCmd = defineCommand({
+  meta: { name: "backend", description: "Enable a PHP or Node API in an existing project" },
+  args: {
+    runtime: { type: "positional", required: true, description: "php or node" },
+    path: { type: "string", description: "Project directory" },
+  },
+  async run({ args }) {
+    await enableBackend({ runtime: args.runtime, targetDir: args.path });
   },
 });
 
@@ -187,6 +271,11 @@ const uiCmd = defineCommand({
     description: "Launch interactive terminal cockpit",
   },
   args: {
+    component: { type: "string", description: "Component names for component-add action" },
+    input: { type: "string", description: "Asset input directory" },
+    output: { type: "string", description: "Asset/release output directory" },
+    format: { type: "string", description: "Release format" },
+    "skip-build": { type: "boolean", default: false, description: "Package an existing build" },
     project: {
       type: "string",
       description: "Target project name or relative path in workspace",
@@ -200,6 +289,11 @@ const uiCmd = defineCommand({
     await uiCommand({
       project: args.project,
       action: args.action,
+      component: args.component,
+      input: args.input,
+      output: args.output,
+      format: args.format,
+      skipBuild: args["skip-build"],
     });
   },
 });
@@ -212,8 +306,12 @@ export const main = defineCommand({
   },
   subCommands: {
     new: newCmd,
+    add: addCmd,
+    assets: assetsCmd,
+    release: releaseCmd,
     prototype: prototypeCmd,
     adopt: adoptCmd,
+    backend: backendCmd,
     phase: phaseCmd,
     repomap: repomapCmd,
     test: testCmd,

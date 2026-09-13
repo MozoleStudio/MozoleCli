@@ -1,15 +1,23 @@
 import { Box, Text, useApp, useInput } from "ink";
 import React, { useCallback, useEffect, useState } from "react";
+import { adoptProject } from "../commands/adopt.js";
 import { doctorCommand } from "../commands/doctor.js";
+import { createNewProject } from "../commands/new.js";
 import { getProjectPhaseStatus, phaseCommand } from "../commands/phase.js";
+import { prototypeInit } from "../commands/prototype.js";
 import { repomapCommand } from "../commands/repomap.js";
 import { verifyCommand } from "../commands/verify.js";
 import { PHASES } from "../scaffold/phases.js";
 import { type ManagedServer, serverManager } from "../server/manager.js";
-import type { DiscoveredProject } from "../utils/fs.js";
+import {
+  type DiscoveredProject,
+  discoverWorkspaceProjects,
+  findPrototypeRoot,
+} from "../utils/fs.js";
 import { CLI_VERSION } from "../version.js";
+import { ToolsPanel } from "./ToolsPanel.js";
 
-export type CockpitTab = "overview" | "servers" | "projects" | "logs";
+export type CockpitTab = "overview" | "servers" | "projects" | "logs" | "workspace" | "tools";
 
 export interface CockpitProps {
   projectRoot: string;
@@ -39,6 +47,25 @@ export function CockpitApp({
   const [currentTab, setCurrentTab] = useState<CockpitTab>(initialTab);
   const [activeProject, setActiveProject] = useState<string>(initialActiveProject);
   const [projectRoot, setProjectRoot] = useState<string>(initialProjectRoot);
+  const [workspaceProjects, setWorkspaceProjects] = useState<DiscoveredProject[]>(projects);
+  const [currentProtoRoot, setCurrentProtoRoot] = useState<string | null | undefined>(protoRoot);
+
+  type WorkspaceMode = "menu" | "new_project" | "adopt_project" | "init_prototype";
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("menu");
+  const [workspaceMenuIndex, setWorkspaceMenuIndex] = useState<number>(0);
+
+  // New Project Form
+  const [newProjectStep, setNewProjectStep] = useState<number>(0);
+  const [newProjectName, setNewProjectName] = useState<string>("");
+  const [newProjectFlagship, setNewProjectFlagship] = useState<boolean>(false);
+  const [newProjectBackend, setNewProjectBackend] = useState<"none" | "php" | "node">("none");
+
+  // Adopt Form
+  const [adoptPath, setAdoptPath] = useState<string>("");
+
+  // Feedback/Error
+  const [formError, setFormError] = useState<string | null>(null);
+
   const [selectedProjectIndex, setSelectedProjectIndex] = useState<number>(() => {
     const idx = projects.findIndex((p) => p.name === initialActiveProject);
     return idx >= 0 ? idx : 0;
@@ -234,9 +261,224 @@ export function CockpitApp({
     }
   }, [busyAction, activeProject, projectRoot, addLog]);
 
+  // Rescan Workspace Projects
+  const rescanWorkspace = useCallback(async () => {
+    try {
+      const pRoot = currentProtoRoot ?? (await findPrototypeRoot(projectRoot));
+      if (pRoot) {
+        setCurrentProtoRoot(pRoot);
+        const discovered = await discoverWorkspaceProjects(pRoot);
+        setWorkspaceProjects(discovered);
+        addLog(`Workspace rescan found ${discovered.length} client project(s).`, "info");
+      } else {
+        addLog("Rescan: Standalone repository mode, no prototype workspace root found.", "info");
+      }
+    } catch (err: unknown) {
+      addLog(`Rescan error: ${err instanceof Error ? err.message : String(err)}`, "error");
+    }
+  }, [currentProtoRoot, projectRoot, addLog]);
+
+  // Create New Project
+  const handleCreateProject = useCallback(async () => {
+    const trimmedName = newProjectName.trim().toLowerCase();
+    if (!trimmedName) {
+      setFormError("Project name cannot be empty.");
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(trimmedName)) {
+      setFormError("Project name must use lowercase alphanumeric characters and hyphens.");
+      return;
+    }
+
+    setBusyAction("Scaffolding Project");
+    addLog(`Scaffolding new client project: ${trimmedName}...`, "info");
+    try {
+      const target = await createNewProject({
+        name: trimmedName,
+        flagship: newProjectFlagship,
+        backend: newProjectBackend,
+        cwd: currentProtoRoot ?? projectRoot,
+      });
+      addLog(`Project generated successfully at: ${target}`, "success");
+      setNewProjectName("");
+      setNewProjectFlagship(false);
+      setNewProjectBackend("none");
+      setNewProjectStep(0);
+      setWorkspaceMode("menu");
+      setFormError(null);
+
+      // Rescan and activate new project
+      const pRoot = currentProtoRoot ?? (await findPrototypeRoot(projectRoot));
+      if (pRoot) {
+        setCurrentProtoRoot(pRoot);
+        const discovered = await discoverWorkspaceProjects(pRoot);
+        setWorkspaceProjects(discovered);
+        const found = discovered.find((p) => p.name === trimmedName || p.path === target);
+        if (found) {
+          switchProject(found);
+        }
+      } else {
+        setActiveProject(trimmedName);
+        setProjectRoot(target);
+        refreshPhase(target);
+      }
+      setCurrentTab("overview");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFormError(msg);
+      addLog(`Project creation failed: ${msg}`, "error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [
+    newProjectName,
+    newProjectFlagship,
+    newProjectBackend,
+    currentProtoRoot,
+    projectRoot,
+    addLog,
+    switchProject,
+    refreshPhase,
+  ]);
+
+  // Adopt Project
+  const handleAdoptProject = useCallback(async () => {
+    const target = adoptPath.trim() || ".";
+    setBusyAction("Adopting Project");
+    addLog(`Adopting project at path: ${target}...`, "info");
+    try {
+      await adoptProject({ targetDir: target });
+      addLog(`Successfully adopted project into Mozole governance: ${target}`, "success");
+      setAdoptPath("");
+      setWorkspaceMode("menu");
+      setFormError(null);
+      await rescanWorkspace();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFormError(msg);
+      addLog(`Project adoption failed: ${msg}`, "error");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [adoptPath, addLog, rescanWorkspace]);
+
+  // Init Prototype Workspace
+  const handleInitPrototype = useCallback(async () => {
+    setBusyAction("Initializing Prototype");
+    addLog(`Initializing prototype workspace ecosystem in ${projectRoot}...`, "info");
+    try {
+      await prototypeInit({ cwd: projectRoot });
+      setCurrentProtoRoot(projectRoot);
+      addLog("Prototype workspace initialized successfully.", "success");
+      setWorkspaceMode("menu");
+      await rescanWorkspace();
+    } catch (err: unknown) {
+      addLog(
+        `Prototype initialization failed: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }, [projectRoot, addLog, rescanWorkspace]);
+
   // Keyboard navigation
   useInput(
     (input, key) => {
+      if (currentTab === "tools") return;
+      // Form interaction inside Workspace tab
+      if (currentTab === "workspace" && workspaceMode !== "menu") {
+        if (key.escape) {
+          if (workspaceMode === "new_project" && newProjectStep > 0) {
+            setNewProjectStep((prev) => prev - 1);
+            setFormError(null);
+          } else {
+            setWorkspaceMode("menu");
+            setFormError(null);
+          }
+          return;
+        }
+
+        if (workspaceMode === "new_project") {
+          if (newProjectStep === 0) {
+            if (key.return) {
+              const name = newProjectName.trim();
+              if (!name) {
+                setFormError("Please enter a project name.");
+                return;
+              }
+              if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) {
+                setFormError("Alphanumeric characters, hyphens, and dots only.");
+                return;
+              }
+              setFormError(null);
+              setNewProjectStep(1);
+            } else if (key.backspace || key.delete) {
+              setNewProjectName((prev) => prev.slice(0, -1));
+              setFormError(null);
+            } else if (
+              input &&
+              input.length === 1 &&
+              !key.ctrl &&
+              !key.meta &&
+              /[a-z0-9._-]/i.test(input)
+            ) {
+              setNewProjectName((prev) => prev + input.toLowerCase());
+              setFormError(null);
+            }
+            return;
+          }
+
+          if (newProjectStep === 1) {
+            if (key.return) {
+              setNewProjectStep(2);
+            } else if (key.leftArrow || key.rightArrow || key.tab || input === " ") {
+              setNewProjectFlagship((prev) => !prev);
+            }
+            return;
+          }
+
+          if (newProjectStep === 2) {
+            if (key.return) {
+              handleCreateProject();
+            } else if (key.leftArrow) {
+              setNewProjectBackend((prev) =>
+                prev === "none" ? "node" : prev === "php" ? "none" : "php",
+              );
+            } else if (key.rightArrow || key.tab || input === " ") {
+              setNewProjectBackend((prev) =>
+                prev === "none" ? "php" : prev === "php" ? "node" : "none",
+              );
+            }
+            return;
+          }
+        }
+
+        if (workspaceMode === "adopt_project") {
+          if (key.return) {
+            handleAdoptProject();
+          } else if (key.backspace || key.delete) {
+            setAdoptPath((prev) => prev.slice(0, -1));
+            setFormError(null);
+          } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
+            setAdoptPath((prev) => prev + input);
+            setFormError(null);
+          }
+          return;
+        }
+
+        if (workspaceMode === "init_prototype") {
+          if (key.return || input === "y" || input === "Y") {
+            handleInitPrototype();
+          } else if (input === "n" || input === "N") {
+            setWorkspaceMode("menu");
+          }
+          return;
+        }
+
+        return;
+      }
+
       if (key.escape || input === "q" || input === "Q") {
         onExit?.();
         exit();
@@ -248,16 +490,68 @@ export function CockpitApp({
       else if (input === "2") setCurrentTab("servers");
       else if (input === "3") setCurrentTab("projects");
       else if (input === "4") setCurrentTab("logs");
+      else if (input === "5") setCurrentTab("workspace");
+      else if (input === "6") setCurrentTab("tools");
       else if (key.tab) {
         setCurrentTab((prev) => {
           if (prev === "overview") return "servers";
           if (prev === "servers") return "projects";
           if (prev === "projects") return "logs";
+          if (prev === "logs") return "workspace";
+          if (prev === "workspace") return "tools";
           return "overview";
         });
       }
 
-      // Action shortcuts
+      // Workspace menu navigation
+      if (currentTab === "workspace" && workspaceMode === "menu") {
+        if (key.upArrow) {
+          setWorkspaceMenuIndex((prev) => (prev > 0 ? prev - 1 : 3));
+          return;
+        }
+        if (key.downArrow) {
+          setWorkspaceMenuIndex((prev) => (prev < 3 ? prev + 1 : 0));
+          return;
+        }
+        if (key.return) {
+          if (workspaceMenuIndex === 0) {
+            setWorkspaceMode("new_project");
+            setNewProjectStep(0);
+            setFormError(null);
+          } else if (workspaceMenuIndex === 1) {
+            setWorkspaceMode("adopt_project");
+            setAdoptPath("");
+            setFormError(null);
+          } else if (workspaceMenuIndex === 2) {
+            setWorkspaceMode("init_prototype");
+          } else if (workspaceMenuIndex === 3) {
+            rescanWorkspace();
+          }
+          return;
+        }
+        if (input === "n" || input === "N") {
+          setWorkspaceMode("new_project");
+          setNewProjectStep(0);
+          setFormError(null);
+          return;
+        }
+        if (input === "a" || input === "A") {
+          setWorkspaceMode("adopt_project");
+          setAdoptPath("");
+          setFormError(null);
+          return;
+        }
+        if (input === "i" || input === "I") {
+          setWorkspaceMode("init_prototype");
+          return;
+        }
+        if (input === "r" || input === "R") {
+          rescanWorkspace();
+          return;
+        }
+      }
+
+      // Action shortcuts (Global outside form modes)
       if (input === "s" || input === "S") {
         toggleServer();
       } else if (input === "k" || input === "K") {
@@ -269,19 +563,21 @@ export function CockpitApp({
       } else if (input === "d" || input === "D") {
         runDoctor();
       } else if (input === "r" || input === "R") {
-        syncRepomap();
+        if (currentTab !== "workspace") {
+          syncRepomap();
+        }
       } else if (input === "l" || input === "L") {
         setLogs([]);
       }
 
       // Projects tab cursor navigation
-      if (currentTab === "projects" && projects.length > 0) {
+      if (currentTab === "projects" && workspaceProjects.length > 0) {
         if (key.upArrow) {
-          setSelectedProjectIndex((prev) => (prev > 0 ? prev - 1 : projects.length - 1));
+          setSelectedProjectIndex((prev) => (prev > 0 ? prev - 1 : workspaceProjects.length - 1));
         } else if (key.downArrow) {
-          setSelectedProjectIndex((prev) => (prev < projects.length - 1 ? prev + 1 : 0));
+          setSelectedProjectIndex((prev) => (prev < workspaceProjects.length - 1 ? prev + 1 : 0));
         } else if (input === " ") {
-          const chosen = projects[selectedProjectIndex];
+          const chosen = workspaceProjects[selectedProjectIndex];
           if (chosen) {
             if (chosen.name !== activeProject) {
               switchProject(chosen);
@@ -343,13 +639,29 @@ export function CockpitApp({
         </Text>
         <Text bold color={currentTab === "projects" ? "cyan" : "gray"}>
           {currentTab === "projects"
-            ? `● [3] PROJECTS (${projects.length})`
-            : `  [3] PROJECTS (${projects.length})`}
+            ? `● [3] PROJECTS (${workspaceProjects.length})`
+            : `  [3] PROJECTS (${workspaceProjects.length})`}
         </Text>
         <Text bold color={currentTab === "logs" ? "cyan" : "gray"}>
           {currentTab === "logs" ? "● [4] LIVE LOGS" : "  [4] LIVE LOGS"}
         </Text>
+        <Text bold color={currentTab === "workspace" ? "cyan" : "gray"}>
+          {currentTab === "workspace"
+            ? "● [5] WORKSPACE & GENERATOR"
+            : "  [5] WORKSPACE & GENERATOR"}
+        </Text>
+        <Text bold color={currentTab === "tools" ? "cyan" : "gray"}>
+          [6] TOOLS
+        </Text>
       </Box>
+
+      {currentTab === "tools" && (
+        <ToolsPanel
+          projectRoot={projectRoot}
+          onBack={() => setCurrentTab("overview")}
+          onLog={addLog}
+        />
+      )}
 
       {/* TAB 1: OVERVIEW & ROADMAP */}
       {currentTab === "overview" && (
@@ -616,18 +928,18 @@ export function CockpitApp({
           <Box borderStyle="single" borderColor="gray" paddingX={1} flexDirection="column">
             <Box justifyContent="space-between" marginBottom={1}>
               <Text bold color="yellow">
-                WORKSPACE CLIENT PROJECTS ({projects.length} DETECTED)
+                WORKSPACE CLIENT PROJECTS ({workspaceProjects.length} DETECTED)
               </Text>
               <Text dimColor>Use [↑] / [↓] to navigate, [Space] to open project</Text>
             </Box>
-            {projects.length === 0 ? (
+            {workspaceProjects.length === 0 ? (
               <Box paddingY={1}>
                 <Text dimColor>
                   No subprojects detected. Operating in standalone repository mode: {activeProject}
                 </Text>
               </Box>
             ) : (
-              projects.map((proj, idx) => {
+              workspaceProjects.map((proj, idx) => {
                 const isSelected = idx === selectedProjectIndex;
                 const isActive = proj.name === activeProject;
                 const isRunning = Boolean(serverManager.getServer(proj.name));
@@ -703,12 +1015,336 @@ export function CockpitApp({
         </Box>
       )}
 
+      {/* TAB 5: WORKSPACE & GENERATOR */}
+      {currentTab === "workspace" && (
+        <Box flexDirection="column" width="100%">
+          {/* Top Status Box */}
+          <Box
+            borderStyle="single"
+            borderColor="gray"
+            paddingX={1}
+            flexDirection="column"
+            marginBottom={1}
+          >
+            <Box justifyContent="space-between">
+              <Text bold color="yellow">
+                WORKSPACE ECOSYSTEM & STATUS
+              </Text>
+              <Text dimColor>
+                {currentProtoRoot ? "● PROTOTYPE MONOREPO ECOSYSTEM" : "○ STANDALONE PROJECT MODE"}
+              </Text>
+            </Box>
+            <Box marginTop={1} gap={2}>
+              <Box>
+                <Text dimColor>Root: </Text>
+                <Text bold color={currentProtoRoot ? "green" : "white"}>
+                  {currentProtoRoot ?? projectRoot}
+                </Text>
+              </Box>
+              <Box>
+                <Text dimColor>Active Project: </Text>
+                <Text bold color="cyan">
+                  {activeProject}
+                </Text>
+              </Box>
+              <Box>
+                <Text dimColor>Detected Projects: </Text>
+                <Text bold color="yellow">
+                  {workspaceProjects.length}
+                </Text>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Action or Form Container */}
+          <Box borderStyle="single" borderColor="cyan" paddingX={1} flexDirection="column">
+            {workspaceMode === "menu" && (
+              <Box flexDirection="column">
+                <Box justifyContent="space-between" marginBottom={1}>
+                  <Text bold color="cyan">
+                    WORKSPACE OPERATIONS & PROJECT ACTIONS
+                  </Text>
+                  <Text dimColor>Use [↑] / [↓] + [Enter] or press key</Text>
+                </Box>
+
+                {[
+                  {
+                    key: "N",
+                    title: "GENERATE NEW CLIENT PROJECT",
+                    desc: "Scaffold verified Standard (React Router 7 SSG) or Flagship (Wouter + Canvas) project",
+                  },
+                  {
+                    key: "A",
+                    title: "ADOPT EXISTING DIRECTORY",
+                    desc: "Inject Mozole policies, 10-step atomic phases, canonical tokens, and repomap fihrist",
+                  },
+                  {
+                    key: "I",
+                    title: "INITIALIZE PROTOTYPE WORKSPACE",
+                    desc: "Setup npm workspaces and shared dependencies with project-owned source code",
+                  },
+                  {
+                    key: "R",
+                    title: "RESCAN WORKSPACE PROJECTS",
+                    desc: "Audit the filesystem and update all detected client projects in the cockpit",
+                  },
+                ].map((item, idx) => {
+                  const isSelected = workspaceMenuIndex === idx;
+                  return (
+                    <Box key={item.key} flexDirection="column" marginY={0}>
+                      <Box gap={1}>
+                        <Text bold color={isSelected ? "cyan" : "gray"}>
+                          {isSelected ? "▶" : " "} [{item.key}]
+                        </Text>
+                        <Text bold color={isSelected ? "white" : "gray"}>
+                          {item.title}
+                        </Text>
+                      </Box>
+                      <Box paddingLeft={6}>
+                        <Text dimColor>{item.desc}</Text>
+                      </Box>
+                    </Box>
+                  );
+                })}
+
+                <Box marginTop={1}>
+                  <Text dimColor>
+                    Press{" "}
+                    <Text bold color="cyan">
+                      [Enter]
+                    </Text>{" "}
+                    to select, or press{" "}
+                    <Text bold color="yellow">
+                      [N]
+                    </Text>
+                    ,{" "}
+                    <Text bold color="yellow">
+                      [A]
+                    </Text>
+                    ,{" "}
+                    <Text bold color="yellow">
+                      [I]
+                    </Text>
+                    ,{" "}
+                    <Text bold color="yellow">
+                      [R]
+                    </Text>{" "}
+                    directly.
+                  </Text>
+                </Box>
+              </Box>
+            )}
+
+            {workspaceMode === "new_project" && (
+              <Box flexDirection="column">
+                <Box justifyContent="space-between" marginBottom={1}>
+                  <Text bold color="yellow">
+                    ⚡ SCAFFOLD NEW CLIENT PROJECT (Step {newProjectStep + 1} of 3)
+                  </Text>
+                  <Text dimColor>Press [Esc] to return</Text>
+                </Box>
+
+                {/* Field 1: Name */}
+                <Box gap={1} marginY={0}>
+                  <Text bold color={newProjectStep === 0 ? "cyan" : "gray"}>
+                    {newProjectStep === 0 ? "▶ 1. Project Name:" : "  1. Project Name:"}
+                  </Text>
+                  <Text bold color="white">
+                    {newProjectName || (newProjectStep === 0 ? "_" : "<not set>")}
+                  </Text>
+                  {newProjectStep === 0 && (
+                    <Text dimColor>(Type name, press [Enter] to confirm)</Text>
+                  )}
+                </Box>
+
+                {/* Field 2: Profile */}
+                <Box gap={1} marginY={0} marginTop={1}>
+                  <Text bold color={newProjectStep === 1 ? "cyan" : "gray"}>
+                    {newProjectStep === 1 ? "▶ 2. Creative Profile:" : "  2. Creative Profile:"}
+                  </Text>
+                  <Box gap={2}>
+                    <Text bold={!newProjectFlagship} color={!newProjectFlagship ? "green" : "gray"}>
+                      {!newProjectFlagship ? "[● Standard (React Router 7 SSG)]" : "[○ Standard]"}
+                    </Text>
+                    <Text bold={newProjectFlagship} color={newProjectFlagship ? "magenta" : "gray"}>
+                      {newProjectFlagship ? "[● Flagship (Wouter + Canvas)]" : "[○ Flagship]"}
+                    </Text>
+                  </Box>
+                  {newProjectStep === 1 && (
+                    <Text dimColor>(Press [Space]/[Tab] to switch, [Enter] to next)</Text>
+                  )}
+                </Box>
+
+                {/* Field 3: Backend */}
+                <Box gap={1} marginY={0} marginTop={1}>
+                  <Text bold color={newProjectStep === 2 ? "cyan" : "gray"}>
+                    {newProjectStep === 2 ? "▶ 3. Backend Runtime:" : "  3. Backend Runtime:"}
+                  </Text>
+                  <Box gap={2}>
+                    <Text
+                      bold={newProjectBackend === "none"}
+                      color={newProjectBackend === "none" ? "green" : "gray"}
+                    >
+                      {newProjectBackend === "none" ? "[● None (Pure Frontend)]" : "[○ None]"}
+                    </Text>
+                    <Text
+                      bold={newProjectBackend === "php"}
+                      color={newProjectBackend === "php" ? "yellow" : "gray"}
+                    >
+                      {newProjectBackend === "php" ? "[● PHP 8.1+ Zero-Dep]" : "[○ PHP]"}
+                    </Text>
+                    <Text
+                      bold={newProjectBackend === "node"}
+                      color={newProjectBackend === "node" ? "yellow" : "gray"}
+                    >
+                      {newProjectBackend === "node" ? "[● Node.js API]" : "[○ Node]"}
+                    </Text>
+                  </Box>
+                  {newProjectStep === 2 && (
+                    <Text dimColor>(Press [Space]/[Tab] to switch, [Enter] to generate)</Text>
+                  )}
+                </Box>
+
+                {/* Target Destination Preview */}
+                <Box marginTop={1} paddingLeft={2}>
+                  <Text dimColor>Target Path: </Text>
+                  <Text color="cyan">
+                    {newProjectName
+                      ? currentProtoRoot
+                        ? `${currentProtoRoot}/projects/${newProjectName}`
+                        : `${projectRoot}/${newProjectName}`
+                      : "<enter name above>"}
+                  </Text>
+                </Box>
+
+                {formError && (
+                  <Box marginTop={1}>
+                    <Text bold color="red">
+                      [!] {formError}
+                    </Text>
+                  </Box>
+                )}
+
+                <Box marginTop={1} gap={2}>
+                  <Text dimColor>Navigation: </Text>
+                  <Text>
+                    <Text bold color="cyan">
+                      [Enter]
+                    </Text>{" "}
+                    {newProjectStep === 2 ? "Generate Project" : "Next Field"}
+                  </Text>
+                  <Text>
+                    <Text bold color="yellow">
+                      [Esc]
+                    </Text>{" "}
+                    {newProjectStep > 0 ? "Back" : "Cancel"}
+                  </Text>
+                </Box>
+              </Box>
+            )}
+
+            {workspaceMode === "adopt_project" && (
+              <Box flexDirection="column">
+                <Box justifyContent="space-between" marginBottom={1}>
+                  <Text bold color="yellow">
+                    📦 ADOPT EXISTING REPOSITORY INTO MOZOLE GOVERNANCE
+                  </Text>
+                  <Text dimColor>Press [Esc] to return</Text>
+                </Box>
+
+                <Box gap={1}>
+                  <Text bold color="cyan">
+                    ▶ Target Directory Path:
+                  </Text>
+                  <Text bold color="white">
+                    {adoptPath || "."}
+                  </Text>
+                </Box>
+
+                <Box marginTop={1} paddingLeft={2} flexDirection="column">
+                  <Text dimColor>
+                    Will inject: AGENTS.md, docs/phases/status.md, docs/repomap/, and tokens.css
+                  </Text>
+                  <Text dimColor>
+                    Type directory path (e.g. ../another-project or . for current).
+                  </Text>
+                </Box>
+
+                {formError && (
+                  <Box marginTop={1}>
+                    <Text bold color="red">
+                      [!] {formError}
+                    </Text>
+                  </Box>
+                )}
+
+                <Box marginTop={1} gap={2}>
+                  <Text>
+                    <Text bold color="cyan">
+                      [Enter]
+                    </Text>{" "}
+                    Adopt Directory
+                  </Text>
+                  <Text>
+                    <Text bold color="yellow">
+                      [Esc]
+                    </Text>{" "}
+                    Cancel
+                  </Text>
+                </Box>
+              </Box>
+            )}
+
+            {workspaceMode === "init_prototype" && (
+              <Box flexDirection="column">
+                <Box justifyContent="space-between" marginBottom={1}>
+                  <Text bold color="yellow">
+                    🚀 INITIALIZE PROTOTYPE WORKSPACE ECOSYSTEM
+                  </Text>
+                  <Text dimColor>Press [Esc] to return</Text>
+                </Box>
+
+                <Box flexDirection="column" paddingLeft={2}>
+                  <Text>Initialize a multi-project prototype workspace in:</Text>
+                  <Text bold color="cyan">
+                    {projectRoot}
+                  </Text>
+                  <Box marginTop={1} flexDirection="column">
+                    <Text dimColor>• Creates mozole.config.json</Text>
+                    <Text dimColor>• Creates projects/ folder for client projects</Text>
+                    <Text dimColor>
+                      • Shares npm dependencies; keeps UI, tokens and behaviors project-local
+                    </Text>
+                    <Text dimColor>• Injects AGENTS.md governance contract</Text>
+                  </Box>
+                </Box>
+
+                <Box marginTop={1} gap={2}>
+                  <Text>
+                    <Text bold color="green">
+                      [Enter / Y]
+                    </Text>{" "}
+                    Confirm Initialization
+                  </Text>
+                  <Text>
+                    <Text bold color="yellow">
+                      [Esc / N]
+                    </Text>{" "}
+                    Cancel
+                  </Text>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        </Box>
+      )}
+
       {/* Footer Shortcut Bar */}
       <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="space-between">
         <Box gap={1}>
           <Text>
             <Text bold color="cyan">
-              [1-4]
+              [1-5]
             </Text>
             <Text dimColor> Tabs</Text>
           </Text>
@@ -725,6 +1361,28 @@ export function CockpitApp({
               </Text>
               <Text dimColor> Select</Text>
             </Text>
+          )}
+          {currentTab === "workspace" && workspaceMode === "menu" && (
+            <>
+              <Text>
+                <Text bold color="yellow">
+                  [N]
+                </Text>
+                <Text dimColor> New</Text>
+              </Text>
+              <Text>
+                <Text bold color="yellow">
+                  [A]
+                </Text>
+                <Text dimColor> Adopt</Text>
+              </Text>
+              <Text>
+                <Text bold color="yellow">
+                  [I]
+                </Text>
+                <Text dimColor> Init</Text>
+              </Text>
+            </>
           )}
           <Text>
             <Text bold color="cyan">

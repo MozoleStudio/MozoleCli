@@ -17,8 +17,10 @@ export async function createNewProject(options: NewProjectOptions): Promise<stri
   const name = options.name.trim();
 
   let targetDir = options.targetDir;
+  const protoRoot = await findPrototypeRoot(
+    targetDir ? path.dirname(path.resolve(targetDir)) : cwd,
+  );
   if (!targetDir) {
-    const protoRoot = await findPrototypeRoot(cwd);
     if (protoRoot) {
       targetDir = path.join(protoRoot, "projects", name);
     } else {
@@ -50,15 +52,17 @@ export async function createNewProject(options: NewProjectOptions): Promise<stri
     name,
     flagship: options.flagship,
     backend,
-    initGit: options.initGit ?? true,
+    initGit: options.initGit ?? !protoRoot,
   });
 
   console.log(pc.green(`✓ Project successfully generated at ${targetDir}`));
   console.log("\nNext steps:");
   console.log(`  1. ${pc.cyan(`cd ${path.relative(cwd, targetDir) || "."}`)}`);
-  console.log(`  2. ${pc.cyan("npm install")}`);
+  console.log(`  2. ${pc.cyan(protoRoot ? `npm install --prefix "${protoRoot}"` : "npm install")}`);
   console.log(`  3. ${pc.cyan("mozole verify")}`);
   console.log(`  4. ${pc.cyan("npm run dev")}\n`);
+  if (backend !== "none")
+    console.log(`  Backend: run ${pc.cyan("npm run dev:backend")} in a second terminal.\n`);
 
   return targetDir;
 }

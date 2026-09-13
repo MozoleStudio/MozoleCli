@@ -1,13 +1,16 @@
-import { isSafeProjectName } from "../utils/fs.js";
+import path from "node:path";
+import { atomicWrite, isSafeProjectName } from "../utils/fs.js";
 import { initGit } from "../utils/git.js";
 import { scaffoldAgentPolicies } from "./agents.js";
 import { scaffoldBackend } from "./backend.js";
 import { scaffoldDesign } from "./design.js";
 import { scaffoldFlagshipProject } from "./flagship.js";
+import { scaffoldLibrary } from "./library.js";
 import { scaffoldPhases } from "./phases.js";
 import { scaffoldRepomap } from "./repomap.js";
 import { scaffoldStandardProject } from "./standard.js";
 import { scaffoldTokens } from "./tokens.js";
+import { scaffoldWorkflow } from "./workflow.js";
 
 export interface ScaffoldOptions {
   targetDir: string;
@@ -45,10 +48,11 @@ export async function scaffoldNewProject(options: ScaffoldOptions): Promise<void
   await scaffoldPhases(targetDir);
 
   // 4. Repomap & Fihrist
-  await scaffoldRepomap(targetDir, name, flagship);
+  await scaffoldRepomap(targetDir, name, flagship, backend);
 
   // 5. Design Evidence Directory
   await scaffoldDesign(targetDir, name);
+  await scaffoldWorkflow(targetDir);
 
   // 6. Frontend Framework Engine
   if (flagship) {
@@ -56,6 +60,26 @@ export async function scaffoldNewProject(options: ScaffoldOptions): Promise<void
   } else {
     await scaffoldStandardProject(targetDir, name);
   }
+
+  await scaffoldLibrary(targetDir);
+  await atomicWrite(
+    path.join(targetDir, ".mozole", "project.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        name,
+        profile: flagship ? "flagship" : "standard",
+        backend,
+        library: "src/library/index.ts",
+      },
+      null,
+      2,
+    ),
+  );
+  await atomicWrite(
+    path.join(targetDir, ".gitignore"),
+    "node_modules/\ndist/\nbuild/\n.react-router/\n.env\n.env.*\n!.env.example\n*.log\nrelease/\nrelease.zip\nreleases/\n",
+  );
 
   // 7. Backend API & Security Layer (optional)
   if (backend !== "none") {

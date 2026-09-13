@@ -1,5 +1,6 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { atomicWrite } from "../utils/fs.js";
+import { atomicWrite, exists, writeFiles } from "../utils/fs.js";
 
 export function generatePhpConfig(): string {
   return `<?php
@@ -267,11 +268,14 @@ export function generatePhpSecurityHtaccess(): string {
   return `# Mozole Studio - Shared Hosting Security
 # Blocks direct access to sensitive PHP files and enforces strict methods
 
-<FilesMatch "^config\\.php$">
+<FilesMatch "^(config|mailer|router)\\.php$">
     Require all denied
 </FilesMatch>
 
 Options -Indexes -MultiViews
+
+RewriteEngine On
+RewriteRule ^(health|contact)$ index.php [L]
 
 <LimitExcept GET POST OPTIONS>
     Require all denied
@@ -286,7 +290,7 @@ const PORT = Number(process.env.PORT || 3001);
 
 const server = createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -303,23 +307,8 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/api/contact") {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
-      try {
-        const data = JSON.parse(body);
-        if (data._honey) {
-          res.writeHead(200);
-          res.end(JSON.stringify({ success: true }));
-          return;
-        }
-        res.writeHead(200);
-        res.end(JSON.stringify({ success: true, message: "Message received." }));
-      } catch {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-      }
-    });
+    res.writeHead(501);
+    res.end(JSON.stringify({ error: "Configure a project contact delivery adapter before accepting messages." }));
     return;
   }
 
@@ -327,7 +316,9 @@ const server = createServer(async (req, res) => {
   res.end(JSON.stringify({ error: "Not found" }));
 });
 
-server.listen(PORT, () => {
+server.requestTimeout = 15_000;
+server.headersTimeout = 10_000;
+server.listen(PORT, process.env.HOST || "127.0.0.1", () => {
   console.log(\`Backend API running on http://localhost:\${PORT}\`);
 });
 `;
@@ -337,17 +328,56 @@ export async function scaffoldBackend(
   projectRoot: string,
   type: "php" | "node" | "none" = "none",
 ): Promise<void> {
-  if (type === "none") {
-    return;
+  if (type === "none") return;
+  if (type !== "php" && type !== "node") throw new Error("Backend must be php or node.");
+  const pkgPath = path.join(projectRoot, "package.json");
+  const pkg = (await exists(pkgPath)) ? JSON.parse(await readFile(pkgPath, "utf8")) : null;
+  const command =
+    type === "php" ? "php -S 127.0.0.1:3001 -t api api/router.php" : "node server/index.mjs";
+  if (pkg?.scripts?.["dev:backend"] && pkg.scripts["dev:backend"] !== command) {
+    throw new Error("Existing dev:backend script conflicts with the selected runtime.");
   }
-  if (type === "php") {
-    const apiDir = path.join(projectRoot, "api");
-    await atomicWrite(path.join(apiDir, "config.php"), generatePhpConfig());
-    await atomicWrite(path.join(apiDir, "mailer.php"), generatePhpMailer());
-    await atomicWrite(path.join(apiDir, "index.php"), generatePhpIndex());
-    await atomicWrite(path.join(apiDir, ".htaccess"), generatePhpSecurityHtaccess());
-  } else if (type === "node") {
-    const serverDir = path.join(projectRoot, "server");
-    await atomicWrite(path.join(serverDir, "index.mjs"), generateNodeBackend());
+  const files =
+    type === "php"
+      ? {
+          "api/config.php": generatePhpConfig(),
+          "api/mailer.php": generatePhpMailer(),
+          "api/index.php": generatePhpIndex(),
+          "api/.htaccess": generatePhpSecurityHtaccess(),
+          "api/router.php": `<?php
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+if (!in_array($path, ['/api/health', '/api/contact', '/api/index.php'], true)) {
+    http_response_code(404);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Not found']);
+    exit;
+}
+require __DIR__ . '/index.php';
+`,
+        }
+      : { "server/index.mjs": generateNodeBackend() };
+  const entries = Object.entries(files) as [string, string][];
+  for (const [file] of entries) {
+    if (await exists(path.join(projectRoot, file))) {
+      throw new Error(`Backend file already exists; preserving it: ${file}`);
+    }
+  }
+  await writeFiles(projectRoot, Object.fromEntries(entries));
+  await writeFiles(projectRoot, {
+    "docs/backend.md": `# Backend: ${type}
+
+Run npm run dev:backend in one terminal and npm run dev in another.
+The frontend uses relative /api URLs; Vite proxies them to 127.0.0.1:3001.
+Production hosting must route /api to this runtime separately from static assets.
+${type === "php" ? "Requires PHP 8.1+. Configure api/config.php with the customer's recipients and origins. Mail delivery requires a configured server mail transport. For Apache, route /api/health and /api/contact to api/index.php; block access to configuration files." : "Requires Node.js 20+. GET /api/health is ready. POST /api/contact returns 501 until a project-owned delivery or storage adapter is implemented."}
+
+This module provides the API foundation. Add project-owned authentication, authorization,
+persistence and admin routes for customer menu management. It does not create a ready CMS.
+Never expose an unauthenticated content mutation endpoint.
+`,
+  });
+  if (pkg) {
+    pkg.scripts = { ...pkg.scripts, "dev:backend": command };
+    await atomicWrite(pkgPath, JSON.stringify(pkg, null, 2));
   }
 }

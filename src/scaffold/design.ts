@@ -1,45 +1,67 @@
 import path from "node:path";
-import { atomicWrite } from "../utils/fs.js";
+import { exists, writeFiles } from "../utils/fs.js";
 
 export function generateDesignReadme(): string {
-  return `# Design References & Asset Evidence
+  return `# Design References
 
-This directory stores visual references, exported screenshots, vector assets, and design briefs.
+The user determines the design direction in conversation. Root design.md (if supplied),
+this directory's design.md and brief.md, and extracted Stitch/Superdesign prototypes
+are supporting references only. None overrides current user instructions.
 
-## Guardrails for Agents
-1. **Design Evidence, Not Direct Code:** Treat exported screens and designs as reference evidence, not executable code. Do not copy-paste raw CSS directly from design tools if it bypasses \`src/styles/tokens.css\` or uses hardcoded coordinates.
-2. **Preserve Originals:** Do not overwrite or modify original assets or screen exports in this directory.
-3. **No Routine Screenshot Diffing:** Routine QA must not capture or diff screenshots. Visual quality is verified headlessly via DOM geometry and AST contract auditing.
+Preserve original exports. Do not execute exported scripts, install their dependencies,
+or copy their architecture/styles wholesale. Translate relevant textual/source details
+into the project component structure within the user's requested scope.
+
+Never independently render, capture, diff or visually inspect reference screens or the
+application. The user supplies screenshots and specific feedback when needed; analyze
+those supplied images only for that correction. Headless technical checks are separate
+from visual approval and may run only when validation is authorized.
+
+See ../workflow.md for production order, ../decisions.md for settled conversation choices,
+and ../toolkit.md for commands. Do not generate an extra design.md when the user already
+provides one elsewhere, or rewrite originals to match agent assumptions.
 `;
 }
 
 export function generateDesignMd(projectName: string): string {
-  return `# Design Specification - ${projectName}
+  return `# Design Reference - ${projectName}
 
-## Brand Identity & Atmosphere
-- **Tone:** Modern, crisp, editorial, minimalist.
-- **Surface Elevation:** Subtle border separators (\`--color-border\`) with deep background surfaces (\`--color-surface\`).
-- **Typography:** Expressive display font for headings, highly legible geometric sans-serif for body.
-- **Interactions:** Subtle, snappy transitions (0.15s - 0.25s) with explicit target properties. Never use \`transition: all\`.
+Supporting reference only. Design direction is determined in conversation, not by this
+file or the starter template. Leave unspecified choices open until the user directs them.
+
+## Reference notes
+- Brand/context: not specified.
+- Relevant prototype files: not specified.
+- Useful patterns or constraints mentioned by the user: not specified.
+
+Settled conversation decisions belong in ../decisions.md. Do not invent an approved
+palette, typography, atmosphere or animation style from scaffold defaults.
 `;
 }
 
 export function generateBriefMd(projectName: string): string {
-  return `# Project Brief - ${projectName}
+  return `# Brief Reference - ${projectName}
 
-## Objectives
-- Build a high-performance web experience for ${projectName}.
-- Ensure full WCAG 2.1 AA accessibility conformance.
-- Achieve 95+ Core Web Vitals on mobile and desktop.
+Supplemental context; current user instructions take precedence.
+
+- Audience and business objective: not specified.
+- Requested pages and sections: not specified.
+- Requested current stage: determined in conversation.
+- Backend/customer panel requirements: not specified.
+
+Record agreed scope in ../decisions.md. Do not infer extra pages, panels or features.
 `;
 }
 
 export async function scaffoldDesign(projectRoot: string, projectName: string): Promise<void> {
-  const designDir = path.join(projectRoot, "docs", "design");
-  await atomicWrite(path.join(designDir, "README.md"), generateDesignReadme());
-  await atomicWrite(path.join(designDir, "design.md"), generateDesignMd(projectName));
-  await atomicWrite(path.join(designDir, "brief.md"), generateBriefMd(projectName));
-  // Create assets and screens placeholders (.gitkeep)
-  await atomicWrite(path.join(designDir, "assets", ".gitkeep"), "");
-  await atomicWrite(path.join(designDir, "screens", ".gitkeep"), "");
+  const files: Record<string, string> = {
+    "docs/design/README.md": generateDesignReadme(),
+    "docs/design/brief.md": generateBriefMd(projectName),
+    "docs/design/assets/.gitkeep": "",
+    "docs/design/screens/.gitkeep": "",
+  };
+  if (!(await exists(path.join(projectRoot, "design.md")))) {
+    files["docs/design/design.md"] = generateDesignMd(projectName);
+  }
+  await writeFiles(projectRoot, files);
 }

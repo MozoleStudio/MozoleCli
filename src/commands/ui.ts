@@ -3,6 +3,7 @@ import { render } from "ink";
 import pc from "picocolors";
 import prompts from "prompts";
 import React from "react";
+import { COMPONENTS } from "../scaffold/components.js";
 import { serverManager } from "../server/manager.js";
 import { CockpitApp, type CockpitTab } from "../ui/CockpitApp.js";
 import {
@@ -11,8 +12,13 @@ import {
   findProjectRoot,
   findPrototypeRoot,
 } from "../utils/fs.js";
+import { addComponents } from "./add.js";
+import { adoptProject } from "./adopt.js";
+import { optimizeAssets } from "./assets.js";
 import { doctorCommand } from "./doctor.js";
 import { phaseCommand } from "./phase.js";
+import { prototypeInit } from "./prototype.js";
+import { createRelease } from "./release.js";
 import { repomapCommand } from "./repomap.js";
 import { verifyCommand } from "./verify.js";
 
@@ -21,6 +27,11 @@ export interface UiOptions {
   cwd?: string;
   interactive?: boolean;
   project?: string;
+  component?: string;
+  input?: string;
+  output?: string;
+  format?: string;
+  skipBuild?: boolean;
 }
 
 export async function uiCommand(options: UiOptions = {}): Promise<void> {
@@ -99,6 +110,11 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
         { title: "[05] Server Stop", value: "server-stop" },
         { title: "[06] Repomap", value: "repomap" },
         { title: "[07] Doctor", value: "doctor" },
+        { title: "[08] Prototype Init", value: "prototype-init" },
+        { title: "[09] Project Adopt", value: "project-adopt" },
+        { title: "[10] Add Component", value: "component-add" },
+        { title: "[11] Optimize Images", value: "assets-optimize" },
+        { title: "[12] Create Release", value: "release" },
       ],
     });
     requestedAction = promptRes?.action;
@@ -107,6 +123,35 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
   if (requestedAction) {
     try {
       switch (requestedAction) {
+        case "component-add": {
+          let component = options.component;
+          if (!component && !options.action) {
+            const choice = await prompts({
+              type: "select",
+              name: "component",
+              message: "Select component:",
+              choices: [...Object.keys(COMPONENTS), "all"].map((name) => ({
+                title: name,
+                value: name,
+              })),
+            });
+            component = choice.component;
+            if (!component) return;
+          }
+          await addComponents({ cwd: targetPath, components: component });
+          break;
+        }
+        case "assets-optimize":
+          await optimizeAssets({ cwd: targetPath, input: options.input, output: options.output });
+          break;
+        case "release":
+          await createRelease({
+            cwd: targetPath,
+            output: options.output,
+            format: options.format,
+            skipBuild: options.skipBuild,
+          });
+          break;
         case "phase-status":
           await phaseCommand({ action: "status", cwd: targetPath });
           break;
@@ -128,6 +173,14 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
         case "doctor":
           await doctorCommand();
           break;
+        case "prototype-init":
+          await prototypeInit({ cwd: targetPath });
+          break;
+        case "project-adopt":
+          await adoptProject({ targetDir: targetPath });
+          break;
+        default:
+          throw new Error(`Unknown UI action: ${requestedAction}`);
       }
     } catch (err: unknown) {
       console.log(pc.red("\n┌─ OPERATION ERROR ──────────────────────────────────────────┐"));

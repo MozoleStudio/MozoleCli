@@ -25,13 +25,12 @@ export const PHASES: PhaseDefinition[] = [
   {
     id: "01",
     name: "Core Architecture & Layout",
-    description:
-      "Application root shell, navigation container, footer, and responsive viewport frame.",
+    description: "Technical root shell and module boundaries before visual composition.",
     checklist: [
       "Root layout established with single <main> landmark",
       "Skip-to-content accessible link implemented",
-      "Navigation header with responsive mobile drawer/menu",
-      "Footer landmark with copyright and essential links",
+      "Project-local UI, feature, section, layout, motion and behavior boundaries documented",
+      "Starter layout is not treated as approved design; no unrequested visual composition",
       "Zero viewport overflow at 320px minimum mobile width",
     ],
   },
@@ -40,7 +39,9 @@ export const PHASES: PhaseDefinition[] = [
     name: "Design Tokens & Primitive Components",
     description: "Bespoke Radix UI primitives, typography hierarchies, and token integration.",
     checklist: [
-      "Bespoke primitives implemented in src/components/ui/ (Button, Dialog, Input)",
+      "Each independent primitive in its own src/components/ui/ file; related primitive parts may stay together",
+      "Reusable modules exported through local barrels and src/library/index.ts",
+      "Settled conversation decisions recorded separately from assumptions in docs/decisions.md",
       "Zero hardcoded color hex/rgb literals (enforced by PostCSS AST audit)",
       "Semantic typography applied via var(--font-display) and var(--font-body)",
       "Interactive targets satisfy minimum 24px/44px touch area",
@@ -50,9 +51,12 @@ export const PHASES: PhaseDefinition[] = [
   {
     id: "03",
     name: "Primary Routes & Pages",
-    description: "Static content routes, hierarchy, meta tags, and document title management.",
+    description: "Compose feature components, then sections, then pages as authorized by the user.",
     checklist: [
-      "Home page and primary sub-pages declared with unique routes",
+      "Only requested pages declared with unique routes",
+      "Feature components compose primitives; separate section files compose features",
+      "Pages compose sections; visual modules receive data/actions via props",
+      "No /ui gallery or additional design stage created without user direction",
       "Single <h1> per page verified across all views",
       "Semantic HTML tags used (section, article, nav, aside)",
       "All images include descriptive alt text or explicit decorative alt=''",
@@ -149,7 +153,7 @@ export const PHASES: PhaseDefinition[] = [
 export function generatePhasesStatusMd(currentPhase = "00"): string {
   let content = `# Project Development Phases & Status
 
-> **Discipline Notice:** Development proceeds sequentially through phases 00 to 10. Run \`mozole phase status\` to inspect progress, and \`mozole phase next\` to advance upon passing all checklist criteria and \`mozole verify\`.
+> **Discipline Notice:** Engineering progress is tracked through phases 00 to 10. Follow docs/workflow.md: primitives, feature components, sections, then pages, only within conversation-authorized scope. Phase 01 establishes technical boundaries, not a finished visual layout. Run \`mozole phase status\` to inspect progress, and \`mozole phase next\` to advance after applicable criteria and authorized checks. It does not run verification itself and may create a Git commit. If tests are prohibited, report them as not run; do not mark them passed.
 
 **Current Phase:** Phase ${currentPhase}
 

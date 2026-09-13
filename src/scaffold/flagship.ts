@@ -47,6 +47,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    proxy: { "/api": "http://127.0.0.1:3001" },
   },
 });
 `;
@@ -159,44 +160,16 @@ export function CanvasLayer() {
 }
 
 export function generateFlagshipApp(): string {
-  return `import Lenis from "lenis";
-import { useEffect } from "react";
-import { Link, Route, Switch } from "wouter";
+  return `import { Link, Route, Switch } from "wouter";
+import { useSmoothScroll } from "./behaviors";
 import { CanvasLayer } from "./components/creative/CanvasLayer";
-import { Button } from "./components/ui/Button";
+import { Footer, Header } from "./components/layout";
+import { Button } from "./components/ui";
+import HomeView from "./routes/home";
+import ShowcaseView from "./routes/showcase";
 
 export default function App() {
-  useEffect(() => {
-    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let lenis: Lenis | undefined;
-    let frameId = 0;
-    const stop = () => {
-      cancelAnimationFrame(frameId);
-      lenis?.destroy();
-      lenis = undefined;
-    };
-    const update = () => {
-      stop();
-      if (preference.matches) return;
-      const instance = new Lenis({
-        duration: 1.2,
-        easing: (t) => Math.min(1, 1.001 - 2 ** (-10 * t)),
-        smoothWheel: true,
-      });
-      lenis = instance;
-      const raf = (time: number) => {
-        instance.raf(time);
-        frameId = requestAnimationFrame(raf);
-      };
-      frameId = requestAnimationFrame(raf);
-    };
-    update();
-    preference.addEventListener("change", update);
-    return () => {
-      preference.removeEventListener("change", update);
-      stop();
-    };
-  }, []);
+  useSmoothScroll();
 
   return (
     <div className="relative min-h-screen bg-[var(--color-background)] text-[var(--color-foreground)] flex flex-col">
@@ -211,33 +184,7 @@ export default function App() {
       <CanvasLayer />
 
       {/* Top Header */}
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-[var(--spacing-container-max)] mx-auto px-[var(--spacing-container-gutter)] h-16 flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-[var(--text-lg)] font-bold tracking-tight text-[var(--color-foreground)]"
-          >
-            Flagship Studio
-          </Link>
-          <nav
-            aria-label="Main Navigation"
-            className="flex items-center gap-6 text-[var(--text-sm)]"
-          >
-            <Link
-              href="/"
-              className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors"
-            >
-              Home
-            </Link>
-            <Link
-              href="/showcase"
-              className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors"
-            >
-              Showcase
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <Header />
 
       {/* Main Content Landmark */}
       <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 flex flex-col">
@@ -256,47 +203,8 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-[var(--color-border)] bg-[var(--color-surface)] py-8 mt-auto">
-        <div className="max-w-[var(--spacing-container-max)] mx-auto px-[var(--spacing-container-gutter)] flex flex-col sm:flex-row items-center justify-between gap-4 text-[var(--text-xs)] text-[var(--color-muted-foreground)]">
-          <p>&copy; {new Date().getFullYear()} Flagship Studio. All rights reserved.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
-  );
-}
-
-function HomeView() {
-  return (
-    <section className="py-24 px-[var(--spacing-container-gutter)] max-w-[var(--spacing-container-max)] mx-auto w-full">
-      <div className="flex flex-col gap-6 max-w-2xl">
-        <h1 className="text-[var(--text-5xl)] font-bold leading-tight tracking-tight">
-          Creative Engineering & Visual Systems
-        </h1>
-        <p className="text-[var(--text-xl)] text-[var(--color-muted-foreground)] leading-relaxed">
-          Interactive web experiences with headless routing, smooth scrolling, and dynamic graphics
-          layers.
-        </p>
-        <div className="flex gap-4 pt-4">
-          <Button variant="primary" size="lg">
-            Explore Showcase
-          </Button>
-          <Button variant="outline" size="lg">
-            Architecture
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ShowcaseView() {
-  return (
-    <section className="py-20 px-[var(--spacing-container-gutter)] max-w-[var(--spacing-container-max)] mx-auto w-full">
-      <h1 className="text-[var(--text-4xl)] font-bold mb-6">Creative Showcase</h1>
-      <p className="text-[var(--text-base)] text-[var(--color-muted-foreground)]">
-        Interactive experiences delivered with precision performance.
-      </p>
-    </section>
   );
 }
 `;
@@ -342,14 +250,186 @@ export async function scaffoldFlagshipProject(
   };
   await atomicWrite(path.join(projectRoot, "biome.json"), JSON.stringify(biomeConfig, null, 2));
 
+  await atomicWrite(
+    path.join(projectRoot, "src/behaviors/useSmoothScroll.ts"),
+    generateSmoothScroll(),
+  );
+  await atomicWrite(
+    path.join(projectRoot, "src/behaviors/index.ts"),
+    'export { useSmoothScroll } from "./useSmoothScroll";\n',
+  );
+  await atomicWrite(
+    path.join(projectRoot, "src/components/motion/Reveal.tsx"),
+    `import { type HTMLMotionProps, motion, useReducedMotion } from "motion/react";
+
+export function Reveal({ children, ...props }: HTMLMotionProps<"div">) {
+  const reduced = useReducedMotion();
+  return (
+    <motion.div
+      initial={reduced ? false : { opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true }}
+      {...props}
+    >
+      {children}
+    </motion.div>
+  );
+}
+`,
+  );
+  await atomicWrite(
+    path.join(projectRoot, "src/components/motion/index.ts"),
+    'export { Reveal } from "./Reveal";\n',
+  );
+  await atomicWrite(
+    path.join(projectRoot, "src/library/index.ts"),
+    'export * from "../components/ui";\nexport * from "../components/layout";\nexport * from "../components/features";\nexport * from "../components/sections";\nexport * from "../components/motion";\nexport * from "../behaviors";\n',
+  );
+
   // Source files
   const srcDir = path.join(projectRoot, "src");
   await atomicWrite(path.join(srcDir, "main.tsx"), generateFlagshipMain());
   await atomicWrite(path.join(srcDir, "App.tsx"), generateFlagshipApp());
+  await atomicWrite(path.join(srcDir, "components/layout/Header.tsx"), generateFlagshipHeader());
+  await atomicWrite(path.join(srcDir, "components/layout/Footer.tsx"), generateFlagshipFooter());
+  await atomicWrite(path.join(srcDir, "routes/home.tsx"), generateFlagshipHome());
+  await atomicWrite(path.join(srcDir, "routes/showcase.tsx"), generateFlagshipShowcase());
   await atomicWrite(
     path.join(srcDir, "components", "creative", "CanvasLayer.tsx"),
     generateFlagshipCanvasLayer(),
   );
   await atomicWrite(path.join(srcDir, "components", "ui", "Button.tsx"), generateBespokeButton());
   await atomicWrite(path.join(srcDir, "components", "ui", "Input.tsx"), generateBespokeInput());
+}
+
+export function generateSmoothScroll(): string {
+  return `import Lenis from "lenis";
+import "lenis/dist/lenis.css";
+import { useEffect } from "react";
+
+export function useSmoothScroll() {
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let lenis: Lenis | undefined;
+    let frameId = 0;
+    const stop = () => {
+      cancelAnimationFrame(frameId);
+      lenis?.destroy();
+      lenis = undefined;
+    };
+    const update = () => {
+      stop();
+      if (preference.matches) return;
+      const instance = new Lenis({
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - 2 ** (-10 * t)),
+        smoothWheel: true,
+      });
+      lenis = instance;
+      const raf = (time: number) => {
+        instance.raf(time);
+        frameId = requestAnimationFrame(raf);
+      };
+      frameId = requestAnimationFrame(raf);
+    };
+    update();
+    preference.addEventListener("change", update);
+    return () => {
+      preference.removeEventListener("change", update);
+      stop();
+    };
+  }, []);
+}
+`;
+}
+
+export function generateFlagshipHeader(): string {
+  return `import { Link } from "wouter";
+
+export function Header() {
+  return (
+    <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-md sticky top-0 z-40">
+      <div className="max-w-[var(--spacing-container-max)] mx-auto px-[var(--spacing-container-gutter)] h-16 flex items-center justify-between">
+        <Link
+          href="/"
+          className="text-[var(--text-lg)] font-bold tracking-tight text-[var(--color-foreground)]"
+        >
+          Flagship Studio
+        </Link>
+        <nav aria-label="Main Navigation" className="flex items-center gap-6 text-[var(--text-sm)]">
+          <Link
+            href="/"
+            className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors"
+          >
+            Home
+          </Link>
+          <Link
+            href="/showcase"
+            className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] transition-colors"
+          >
+            Showcase
+          </Link>
+        </nav>
+      </div>
+    </header>
+  );
+}
+`;
+}
+
+export function generateFlagshipFooter(): string {
+  return `export function Footer() {
+  return (
+    <footer className="relative z-10 border-t border-[var(--color-border)] bg-[var(--color-surface)] py-8 mt-auto">
+      <div className="max-w-[var(--spacing-container-max)] mx-auto px-[var(--spacing-container-gutter)] flex flex-col sm:flex-row items-center justify-between gap-4 text-[var(--text-xs)] text-[var(--color-muted-foreground)]">
+        <p>&copy; {new Date().getFullYear()} Flagship Studio. All rights reserved.</p>
+      </div>
+    </footer>
+  );
+}
+`;
+}
+
+export function generateFlagshipHome(): string {
+  return `import { Reveal } from "../components/motion";
+import { Button } from "../components/ui";
+
+export default function HomeView() {
+  return (
+    <section className="py-24 px-[var(--spacing-container-gutter)] max-w-[var(--spacing-container-max)] mx-auto w-full">
+      <Reveal className="flex flex-col gap-6 max-w-2xl">
+        <h1 className="text-[var(--text-5xl)] font-bold leading-tight tracking-tight">
+          Creative Engineering & Visual Systems
+        </h1>
+        <p className="text-[var(--text-xl)] text-[var(--color-muted-foreground)] leading-relaxed">
+          Interactive web experiences with headless routing, smooth scrolling, and dynamic graphics
+          layers.
+        </p>
+        <div className="flex gap-4 pt-4">
+          <Button variant="primary" size="lg">
+            Explore Showcase
+          </Button>
+          <Button variant="outline" size="lg">
+            Architecture
+          </Button>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+`;
+}
+
+export function generateFlagshipShowcase(): string {
+  return `export default function ShowcaseView() {
+  return (
+    <section className="py-20 px-[var(--spacing-container-gutter)] max-w-[var(--spacing-container-max)] mx-auto w-full">
+      <h1 className="text-[var(--text-4xl)] font-bold mb-6">Creative Showcase</h1>
+      <p className="text-[var(--text-base)] text-[var(--color-muted-foreground)]">
+        Interactive experiences delivered with precision performance.
+      </p>
+    </section>
+  );
+}
+`;
 }

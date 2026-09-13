@@ -12,7 +12,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -21,16 +21,18 @@
     "format": "biome format --write src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "biome check src tests && tsc --noEmit && vitest run && npm run build"
+    "verify": "biome check src tests && tsc --noEmit && npm run build && vitest run"
   },
   "dependencies": {
     "citty": "^0.1.6",
+    "fflate": "^0.8.3",
     "ink": "^7.1.1",
     "picocolors": "^1.1.1",
     "playwright-core": "^1.63.0",
     "postcss": "^8.5.3",
     "prompts": "^2.4.2",
-    "react": "^19.3.0"
+    "react": "^19.3.0",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -1,7 +1,11 @@
 import path from "node:path";
 import { atomicWrite } from "../utils/fs.js";
 
-export function generateRepomapArchitecture(projectName: string, isFlagship: boolean): string {
+export function generateRepomapArchitecture(
+  projectName: string,
+  isFlagship: boolean,
+  backend: "none" | "php" | "node" = "none",
+): string {
   return `# Architecture Overview - ${projectName}
 
 ## Technology Stack
@@ -11,11 +15,13 @@ export function generateRepomapArchitecture(projectName: string, isFlagship: boo
 - **Styling Architecture:** Tailwind CSS v4 with Canonical Tokens in \`src/styles/tokens.css\`
 - **UI Primitives:** Bespoke application components backed by unstyled Radix UI primitives
 ${isFlagship ? "- **Creative Experience:** Lenis (Smooth Scroll) + Motion + Persistent Canvas Layer\n" : ""}
-- **Backend Architecture:** Pure PHP 8.1+ Zero-Dependency API (Contact Mailer, Honeypot, IP Rate Limiter)
+- **Backend Architecture:** ${backend === "none" ? "None (static frontend)" : backend === "php" ? "PHP 8.1+ API in api/" : "Node.js HTTP API in server/"}
+- **Library Ownership:** UI, Layout, Motion and Behavior implementations are project-local; only npm dependencies may be shared.
+- **Library Entry:** src/library/index.ts
 
 ## Directory Hierarchy
 \`\`\`
-├── api/                    # Pure PHP 8.1+ endpoints & security htaccess
+${backend === "none" ? "" : backend === "php" ? "├── api/                    # PHP endpoints\n" : "├── server/                 # Node endpoints\n"}
 ├── docs/
 │   ├── design/             # Design references, exported assets & screens
 │   ├── phases/             # 10-step atomic development status
@@ -39,9 +45,9 @@ All UI primitives are bespoke application code located in \`src/components/ui/\`
 
 | Component | Path | Backing Primitive | Responsibilities |
 | :--- | :--- | :--- | :--- |
-| **Header** | \`src/components/layout/Header.tsx\` | Semantic \`<header>\` | Main navigation, mobile drawer toggle, branding |
+| **Header** | \`src/components/layout/Header.tsx\` | Semantic \`<header>\` | Main navigation, branding |
 | **Footer** | \`src/components/layout/Footer.tsx\` | Semantic \`<footer>\` | Site links, legal notes, copyright |
-| **Button** | \`src/components/ui/Button.tsx\` | Native \`<button>\` | Accessible action trigger, variant styling, loading state |
+| **Button** | \`src/components/ui/Button.tsx\` | Native \`<button>\` | Accessible action trigger, variant styling, composition via Radix Slot |
 | **Dialog** | \`src/components/ui/Dialog.tsx\` | Radix \`@radix-ui/react-dialog\` | Accessible modal dialog, focus trap, escape key |
 | **Input** | \`src/components/ui/Input.tsx\` | Native \`<input>\` | Form control with 16px mobile font floor and error states |
 
@@ -49,14 +55,24 @@ All UI primitives are bespoke application code located in \`src/components/ui/\`
 `;
 }
 
-export function generateRepomapRoutes(): string {
+export function generateRepomapRoutes(isFlagship = false): string {
+  if (isFlagship)
+    return `# Routes & Page Index
+
+| Path | Component | Purpose |
+| :--- | :--- | :--- |
+| / | src/routes/home.tsx | Landing page |
+| /showcase | src/routes/showcase.tsx | Creative showcase |
+
+Routing is composed in src/App.tsx with Wouter. Header and Footer live in src/components/layout.
+`;
   return `# Routes & Page Index
 
 | Path | Component | Layout | Purpose |
 | :--- | :--- | :--- | :--- |
 | \`/\` | \`src/routes/home.tsx\` | Root Layout | Primary landing page & value proposition |
 | \`/about\` | \`src/routes/about.tsx\` | Root Layout | Studio background and team ethos |
-| \`/contact\` | \`src/routes/contact.tsx\` | Root Layout | Contact form, interactive inquiry submission |
+| \`/contact\` | \`src/routes/contact.tsx\` | Root Layout | Contact information |
 
 > **SEO & A11y Requirement:** Every route must export a unique title and meta description, and render exactly one top-level \`<h1>\` tag.
 `;
@@ -88,13 +104,14 @@ export async function scaffoldRepomap(
   projectRoot: string,
   projectName: string,
   isFlagship = false,
+  backend: "none" | "php" | "node" = "none",
 ): Promise<void> {
   const repomapDir = path.join(projectRoot, "docs", "repomap");
   await atomicWrite(
     path.join(repomapDir, "architecture.md"),
-    generateRepomapArchitecture(projectName, isFlagship),
+    generateRepomapArchitecture(projectName, isFlagship, backend),
   );
   await atomicWrite(path.join(repomapDir, "components.md"), generateRepomapComponents());
-  await atomicWrite(path.join(repomapDir, "routes.md"), generateRepomapRoutes());
+  await atomicWrite(path.join(repomapDir, "routes.md"), generateRepomapRoutes(isFlagship));
   await atomicWrite(path.join(repomapDir, "tokens.md"), generateRepomapTokens());
 }

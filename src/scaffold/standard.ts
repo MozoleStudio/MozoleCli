@@ -9,7 +9,7 @@ export function generateStandardPackageJson(projectName: string): string {
     scripts: {
       dev: "react-router dev",
       build: "react-router build",
-      preview: "vite preview",
+      preview: "vite preview --outDir build/client",
       typecheck: "react-router typegen && tsc --noEmit",
       verify: "mozole verify",
     },
@@ -47,6 +47,7 @@ export default defineConfig({
   plugins: [tailwindcss(), reactRouter()],
   server: {
     port: 5173,
+    proxy: { "/api": "http://127.0.0.1:3001" },
   },
 });
 `;
@@ -151,7 +152,7 @@ export default function App() {
 }
 
 export function generateStandardRoutesHome(): string {
-  return `import { Button } from "../components/ui/Button";
+  return `import { Button } from "../components/ui";
 import type { Route } from "./+types/home";
 
 export function meta(_args: Route.MetaArgs) {
