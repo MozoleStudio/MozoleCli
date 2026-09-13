@@ -280,7 +280,7 @@ export function CockpitApp({
           setSelectedProjectIndex((prev) => (prev > 0 ? prev - 1 : projects.length - 1));
         } else if (key.downArrow) {
           setSelectedProjectIndex((prev) => (prev < projects.length - 1 ? prev + 1 : 0));
-        } else if (key.return) {
+        } else if (input === " ") {
           const chosen = projects[selectedProjectIndex];
           if (chosen) {
             if (chosen.name !== activeProject) {
@@ -618,7 +618,7 @@ export function CockpitApp({
               <Text bold color="yellow">
                 WORKSPACE CLIENT PROJECTS ({projects.length} DETECTED)
               </Text>
-              <Text dimColor>Use [↑] / [↓] to navigate, [Enter] to open project</Text>
+              <Text dimColor>Use [↑] / [↓] to navigate, [Space] to open project</Text>
             </Box>
             {projects.length === 0 ? (
               <Box paddingY={1}>
@@ -664,7 +664,7 @@ export function CockpitApp({
               <Text dimColor>
                 Press{" "}
                 <Text bold color="cyan">
-                  [Enter]
+                  [Space]
                 </Text>{" "}
                 to activate selected project and load its roadmap and contracts.
               </Text>
@@ -718,6 +718,14 @@ export function CockpitApp({
             </Text>
             <Text dimColor> Next Tab</Text>
           </Text>
+          {currentTab === "projects" && (
+            <Text>
+              <Text bold color="cyan">
+                [Space]
+              </Text>
+              <Text dimColor> Select</Text>
+            </Text>
+          )}
           <Text>
             <Text bold color="cyan">
               [S]
