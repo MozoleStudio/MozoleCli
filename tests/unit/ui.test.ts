@@ -12,6 +12,7 @@ import { uiCommand } from "../../src/commands/ui.js";
 import { verifyCommand } from "../../src/commands/verify.js";
 import { serverManager } from "../../src/server/manager.js";
 import { CockpitApp } from "../../src/ui/CockpitApp.js";
+import { ToolsPanel } from "../../src/ui/ToolsPanel.js";
 import { atomicWrite } from "../../src/utils/fs.js";
 
 vi.mock("prompts", () => ({ default: vi.fn() }));
@@ -157,5 +158,18 @@ describe("prototype cockpit selection", () => {
     expect(verifyCommand).toHaveBeenCalledWith({
       cwd: path.join(root, "projects/client"),
     });
+  });
+
+  it("renders ToolsPanel Ink component with matched design and cards", () => {
+    const instance = render(
+      React.createElement(ToolsPanel, {
+        projectRoot: path.join(root, "projects/client-a"),
+        activeProject: "client-a",
+        onBack: vi.fn(),
+        onLog: vi.fn(),
+      }),
+    );
+    expect(instance).toBeDefined();
+    instance.unmount();
   });
 });

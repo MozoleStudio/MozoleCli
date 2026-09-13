@@ -521,6 +521,8 @@ export function CockpitApp({
         });
       }
 
+      if (currentTab === "tools") return;
+
       // Workspace menu navigation
       if (currentTab === "workspace" && workspaceMode === "menu") {
         if (key.upArrow) {
@@ -676,6 +678,7 @@ export function CockpitApp({
       {currentTab === "tools" && (
         <ToolsPanel
           projectRoot={projectRoot}
+          activeProject={activeProject}
           onBack={() => {
             setToolsEditing(false);
             setCurrentTab("overview");
@@ -1381,12 +1384,32 @@ export function CockpitApp({
             <Text dimColor> Next Tab</Text>
           </Text>
           {currentTab === "tools" && !toolsEditing && (
-            <Text>
-              <Text bold color="yellow">
-                [Enter]
+            <>
+              <Text>
+                <Text bold color="yellow">
+                  [C]
+                </Text>
+                <Text dimColor> Comp</Text>
               </Text>
-              <Text dimColor> Configure</Text>
-            </Text>
+              <Text>
+                <Text bold color="yellow">
+                  [O]
+                </Text>
+                <Text dimColor> Opt</Text>
+              </Text>
+              <Text>
+                <Text bold color="yellow">
+                  [R]
+                </Text>
+                <Text dimColor> Rel</Text>
+              </Text>
+              <Text>
+                <Text bold color="cyan">
+                  [Enter]
+                </Text>
+                <Text dimColor> Configure</Text>
+              </Text>
+            </>
           )}
           {currentTab === "projects" && (
             <Text>
