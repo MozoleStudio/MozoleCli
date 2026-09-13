@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isCliEntrypoint } from "../../src/cli.js";
 
@@ -49,7 +50,7 @@ describe("isCliEntrypoint - Cross-Platform CLI Entrypoint Resolution", () => {
   });
 
   it("matches when argv[1] path resolves to the current module path", () => {
-    const resolvedPath = path.resolve(new URL(currentModuleUrl).pathname);
+    const resolvedPath = path.resolve(fileURLToPath(currentModuleUrl));
     expect(isCliEntrypoint(resolvedPath, currentModuleUrl)).toBe(true);
   });
 

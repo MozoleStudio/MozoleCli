@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   access,
+  copyFile,
   mkdir,
   readFile,
   readdir,
@@ -56,8 +57,35 @@ export async function atomicWrite(
         process.platform === "win32" &&
         (code === "EPERM" || code === "EBUSY" || code === "EEXIST")
       ) {
-        await rm(targetPath, { force: true }).catch(() => {});
-        await rename(tempFile, targetPath);
+        const targetStat = await stat(targetPath).catch(() => null);
+        if (targetStat?.isDirectory()) {
+          throw renameErr;
+        }
+
+        let renamed = false;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            await rm(targetPath, { force: true }).catch(() => {});
+            await rename(tempFile, targetPath);
+            renamed = true;
+            break;
+          } catch (retryErr) {
+            const retryCode = (retryErr as NodeJS.ErrnoException).code;
+            if (retryCode !== "EPERM" && retryCode !== "EBUSY" && retryCode !== "EEXIST") {
+              throw retryErr;
+            }
+            const delay = Math.floor(Math.random() * 20) + 10 * (attempt + 1);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+        if (!renamed) {
+          try {
+            await copyFile(tempFile, targetPath);
+            await rm(tempFile, { force: true }).catch(() => {});
+          } catch {
+            throw renameErr;
+          }
+        }
       } else {
         throw renameErr;
       }
@@ -236,7 +264,7 @@ export async function discoverWorkspaceProjects(
             for (const entry of entries) {
               if (entry.isDirectory()) {
                 const sub = path.join(baseDir, entry.name);
-                const rel = path.relative(root, sub);
+                const rel = path.relative(root, sub).split(path.sep).join("/");
                 projects.set(rel, { name: rel, path: sub, relative: rel });
               }
             }
@@ -244,7 +272,7 @@ export async function discoverWorkspaceProjects(
         } else {
           const target = path.join(root, pattern);
           if ((await exists(target)) && (await isDirectory(target))) {
-            const rel = path.relative(root, target);
+            const rel = path.relative(root, target).split(path.sep).join("/");
             projects.set(rel, { name: rel, path: target, relative: rel });
           }
         }
@@ -259,7 +287,7 @@ export async function discoverWorkspaceProjects(
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const sub = path.join(projectsDir, entry.name);
-        const rel = path.relative(root, sub);
+        const rel = path.relative(root, sub).split(path.sep).join("/");
         projects.set(entry.name, { name: entry.name, path: sub, relative: rel });
       }
     }

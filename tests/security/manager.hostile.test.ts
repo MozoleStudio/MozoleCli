@@ -51,8 +51,9 @@ describe("security: server/manager process isolation", () => {
     const name = "project; touch INJECTED";
     const cwd = "/isolated/project $(touch INJECTED)";
     const managed = await serverManager.startServer(name, cwd);
+    const expectedNpm = process.platform === "win32" ? "npm.cmd" : "npm";
     expect(spawn).toHaveBeenCalledWith(
-      "npm",
+      expectedNpm,
       ["run", "dev", "--", "--port", "5173", "--strictPort"],
       expect.objectContaining({ cwd, shell: false, detached: process.platform !== "win32" }),
     );
