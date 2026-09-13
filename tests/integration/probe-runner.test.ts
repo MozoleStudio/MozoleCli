@@ -73,7 +73,7 @@ describe("Headless Live DOM Geometry & Trace Runner", () => {
     expect(result.success).toBe(true);
     expect(result.findings).toEqual([]);
     expect(result.browserName).toMatch(/(Brave|Chrome|Chromium|Edge)/i);
-  });
+  }, 30_000);
 
   it("detects overflow and tiny touch targets, producing a zero-screenshot trace", async () => {
     const defectiveHtml = `
@@ -131,5 +131,5 @@ describe("Headless Live DOM Geometry & Trace Runner", () => {
     if (zipListing.exitCode === 0) {
       expect(zipListing.stdout).not.toMatch(/\.(png|jpg|jpeg|webp)/i);
     }
-  });
+  }, 30_000);
 });

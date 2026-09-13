@@ -1,0 +1,17 @@
+# Enforce LF line endings across all platforms for text files
+* text=auto eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.zip binary
+*.tar.gz binary

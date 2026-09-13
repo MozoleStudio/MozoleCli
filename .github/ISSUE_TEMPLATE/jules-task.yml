@@ -1,0 +1,26 @@
+name: Jules Autonomous Task
+description: Delegate a specific coding task, bug fix, or refactor to Google Jules
+title: "[Jules]: "
+labels: ["jules"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue will be automatically picked up by **Google Jules** if connected to this repository.
+        Make sure the prompt is clear and specifies expected behavior.
+  - type: textarea
+    id: task-description
+    attributes:
+      label: Task Description
+      description: Describe what changes need to be made.
+      placeholder: E.g., Fix the failing test in tests/integration/cli.test.ts or bump dependencies
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: How should Jules verify that the task was successfully completed?
+      placeholder: E.g., `npm run verify` passes with zero errors and no regressions.
+    validations:
+      required: false

@@ -188,13 +188,22 @@ describe("CLI Integration Suite", () => {
   });
 
   it("executes CLI router via subprocess printing version and help", async () => {
-    const resVersion = await run(process.execPath, [path.resolve("dist/cli.js"), "--version"], {
+    const cliDistPath = path.resolve("dist/cli.js");
+    if (!(await exists(cliDistPath))) {
+      await run(process.execPath, [
+        path.resolve("node_modules/typescript/bin/tsc"),
+        "-p",
+        "tsconfig.build.json",
+      ]);
+    }
+
+    const resVersion = await run(process.execPath, [cliDistPath, "--version"], {
       env: { CONSOLA_LEVEL: "3" },
     });
     expect(resVersion.exitCode).toBe(0);
     expect(resVersion.stdout).toContain("2.0.0");
 
-    const resHelp = await run(process.execPath, [path.resolve("dist/cli.js"), "--help"], {
+    const resHelp = await run(process.execPath, [cliDistPath, "--help"], {
       env: { CONSOLA_LEVEL: "3" },
     });
     expect(resHelp.exitCode).toBe(0);
