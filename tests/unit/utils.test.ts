@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { findAiTracesInContent } from "../../src/utils/ai-trace.js";
-import { atomicWrite, isSafeProjectName } from "../../src/utils/fs.js";
+import { atomicWrite, discoverWorkspaceProjects, isSafeProjectName } from "../../src/utils/fs.js";
 import { formatPhaseCommitMessage } from "../../src/utils/git.js";
 
 describe("Phase 1 Utilities", () => {
@@ -68,6 +68,46 @@ describe("Phase 1 Utilities", () => {
       `;
       const matches = findAiTracesInContent(cleanCode, "test.ts");
       expect(matches.length).toBe(0);
+    });
+  });
+
+  describe("discoverWorkspaceProjects", () => {
+    it("discovers projects defined in package.json workspaces", async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-ws-"));
+      try {
+        await atomicWrite(
+          path.join(dir, "package.json"),
+          JSON.stringify({
+            workspaces: ["apps/*", "packages/core"],
+          }),
+        );
+        await atomicWrite(path.join(dir, "apps/web/package.json"), "{}");
+        await atomicWrite(path.join(dir, "apps/admin/package.json"), "{}");
+        await atomicWrite(path.join(dir, "packages/core/package.json"), "{}");
+
+        const found = await discoverWorkspaceProjects(dir);
+        expect(found.length).toBe(3);
+        const names = found.map((p) => p.name);
+        expect(names).toContain("apps/web");
+        expect(names).toContain("apps/admin");
+        expect(names).toContain("packages/core");
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("discovers projects in projects/ subfolder", async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-proj-"));
+      try {
+        await atomicWrite(path.join(dir, "projects/client-a/AGENTS.md"), "Policy");
+        await atomicWrite(path.join(dir, "projects/client-b/package.json"), "{}");
+
+        const found = await discoverWorkspaceProjects(dir);
+        expect(found.length).toBe(2);
+        expect(found.map((p) => p.name)).toEqual(["client-a", "client-b"]);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
     });
   });
 });

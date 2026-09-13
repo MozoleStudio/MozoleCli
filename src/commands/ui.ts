@@ -1,12 +1,16 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { render } from "ink";
 import pc from "picocolors";
 import prompts from "prompts";
 import React from "react";
 import { serverManager } from "../server/manager.js";
-import { CockpitApp } from "../ui/CockpitApp.js";
-import { exists, findProjectRoot, findPrototypeRoot } from "../utils/fs.js";
+import { CockpitApp, type CockpitTab } from "../ui/CockpitApp.js";
+import {
+  type DiscoveredProject,
+  discoverWorkspaceProjects,
+  findProjectRoot,
+  findPrototypeRoot,
+} from "../utils/fs.js";
 import { doctorCommand } from "./doctor.js";
 import { phaseCommand } from "./phase.js";
 import { repomapCommand } from "./repomap.js";
@@ -25,50 +29,55 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
   let projectRoot = await findProjectRoot(cwd);
   if (projectRoot === protoRoot) projectRoot = null;
 
-  let activeProject = options.project ?? (projectRoot ? path.basename(projectRoot) : null);
-  const projects: string[] = [];
+  const discoveredProjects: DiscoveredProject[] = protoRoot
+    ? await discoverWorkspaceProjects(protoRoot)
+    : [];
 
-  if (protoRoot) {
-    const projectsDir = path.join(protoRoot, "projects");
-    if (await exists(projectsDir)) {
-      const entries = await fs.readdir(projectsDir, { withFileTypes: true });
-      for (const e of entries) {
-        if (e.isDirectory()) projects.push(e.name);
-      }
-    }
+  let activeProject = options.project ?? null;
+  if (!activeProject && projectRoot) {
+    const matched = discoveredProjects.find((p) => p.path === projectRoot);
+    activeProject = matched ? matched.name : path.basename(projectRoot);
   }
 
-  // If in prototype workspace and no project specified, prompt for selection if available
-  if (!projectRoot && protoRoot && projects.length > 0) {
-    if (options.project && projects.includes(options.project)) {
-      activeProject = options.project;
-      projectRoot = path.join(protoRoot, "projects", options.project);
+  let initialTab: CockpitTab = "overview";
+
+  // If in prototype / monorepo workspace and no project specified
+  if (!projectRoot && protoRoot && discoveredProjects.length > 0) {
+    if (options.project) {
+      const matched = discoveredProjects.find(
+        (p) =>
+          p.name === options.project ||
+          p.relative === options.project ||
+          path.basename(p.path) === options.project,
+      );
+      if (matched) {
+        activeProject = matched.name;
+        projectRoot = matched.path;
+      } else {
+        activeProject = options.project;
+        projectRoot = path.join(protoRoot, options.project);
+      }
     } else if (process.env.VITEST || options.interactive === false) {
-      // In tests/headless, default to first project or prompt mock
+      // In automated tests or headless programmatic mode, prompt for selection if available
       const choice = await prompts({
         type: "select",
         name: "project",
         message: "Select an active client project:",
-        choices: projects.map((p) => ({ title: p, value: p })),
+        choices: discoveredProjects.map((p) => ({ title: p.name, value: p.name })),
       });
       if (choice?.project) {
+        const found = discoveredProjects.find((p) => p.name === choice.project);
         activeProject = choice.project;
-        projectRoot = path.join(protoRoot, "projects", choice.project);
+        projectRoot = found ? found.path : path.join(protoRoot, choice.project);
       } else {
-        activeProject = projects[0];
-        projectRoot = path.join(protoRoot, "projects", projects[0]);
+        activeProject = discoveredProjects[0].name;
+        projectRoot = discoveredProjects[0].path;
       }
     } else {
-      const choice = await prompts({
-        type: "select",
-        name: "project",
-        message: "Select an active client project:",
-        choices: projects.map((p) => ({ title: p, value: p })),
-      });
-      if (choice?.project) {
-        activeProject = choice.project;
-        projectRoot = path.join(protoRoot, "projects", choice.project);
-      }
+      // In interactive terminal at monorepo root: default to first project and open projects explorer tab!
+      activeProject = discoveredProjects[0].name;
+      projectRoot = discoveredProjects[0].path;
+      initialTab = "projects";
     }
   }
 
@@ -152,7 +161,8 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
         projectRoot: targetPath,
         activeProject: projectName,
         protoRoot,
-        projects,
+        projects: discoveredProjects,
+        initialTab,
         onExit: restore,
       }),
     );

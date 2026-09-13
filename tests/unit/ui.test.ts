@@ -123,14 +123,39 @@ describe("prototype cockpit selection", () => {
     expect(doctorCommand).toHaveBeenCalled();
   });
 
-  it("renders CockpitApp Ink component with htop layout without throwing", () => {
-    const instance = render(
-      React.createElement(CockpitApp, {
-        projectRoot: path.join(root, "projects/client"),
-        activeProject: "client",
-      }),
-    );
-    expect(instance).toBeDefined();
-    instance.unmount();
+  it("renders CockpitApp Ink component across all tabs without throwing", () => {
+    const mockProjects = [
+      {
+        name: "client-a",
+        path: path.join(root, "projects/client-a"),
+        relative: "projects/client-a",
+      },
+      {
+        name: "client-b",
+        path: path.join(root, "projects/client-b"),
+        relative: "projects/client-b",
+      },
+    ];
+
+    for (const tab of ["overview", "servers", "projects", "logs"] as const) {
+      const instance = render(
+        React.createElement(CockpitApp, {
+          projectRoot: path.join(root, "projects/client-a"),
+          activeProject: "client-a",
+          projects: mockProjects,
+          initialTab: tab,
+        }),
+      );
+      expect(instance).toBeDefined();
+      instance.unmount();
+    }
+  });
+
+  it("targets specified project directly when passed via options", async () => {
+    vi.mocked(prompts).mockResolvedValueOnce({ action: "verify" });
+    await uiCommand({ project: "client", interactive: false });
+    expect(verifyCommand).toHaveBeenCalledWith({
+      cwd: path.join(root, "projects/client"),
+    });
   });
 });

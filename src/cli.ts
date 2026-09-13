@@ -186,8 +186,21 @@ const uiCmd = defineCommand({
     name: "ui",
     description: "Launch interactive terminal cockpit",
   },
-  async run() {
-    await uiCommand();
+  args: {
+    project: {
+      type: "string",
+      description: "Target project name or relative path in workspace",
+    },
+    action: {
+      type: "string",
+      description: "Direct headless operation action (e.g. phase-status, verify, server-start)",
+    },
+  },
+  async run({ args }) {
+    await uiCommand({
+      project: args.project,
+      action: args.action,
+    });
   },
 });
 

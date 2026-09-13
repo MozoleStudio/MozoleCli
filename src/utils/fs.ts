@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
 export async function exists(targetPath: string): Promise<boolean> {
@@ -164,10 +174,19 @@ export async function findPrototypeRoot(startDir = process.cwd()): Promise<strin
     if (await exists(manifestPath)) {
       try {
         const pkg = JSON.parse(await readFile(manifestPath, "utf8"));
-        if (pkg.mozolePrototype === true || pkg["mozole-prototype"] === true) {
+        if (
+          pkg.mozolePrototype === true ||
+          pkg["mozole-prototype"] === true ||
+          Array.isArray(pkg.workspaces) ||
+          Boolean(pkg.workspaces?.packages)
+        ) {
           return current;
         }
       } catch {}
+    }
+    const projectsPath = path.join(current, "projects");
+    if (await exists(projectsPath)) {
+      return current;
     }
     const parent = path.dirname(current);
     if (parent === current) {
@@ -176,6 +195,115 @@ export async function findPrototypeRoot(startDir = process.cwd()): Promise<strin
     current = parent;
   }
   return null;
+}
+
+export interface DiscoveredProject {
+  name: string;
+  path: string;
+  relative: string;
+}
+
+export async function discoverWorkspaceProjects(
+  workspaceRoot: string,
+): Promise<DiscoveredProject[]> {
+  const root = path.resolve(workspaceRoot);
+  const projects = new Map<string, DiscoveredProject>();
+
+  // 1. Check package.json workspaces if present
+  const manifestPath = path.join(root, "package.json");
+  if (await exists(manifestPath)) {
+    try {
+      const pkg = JSON.parse(await readFile(manifestPath, "utf8"));
+      const ws = Array.isArray(pkg.workspaces)
+        ? pkg.workspaces
+        : Array.isArray(pkg.workspaces?.packages)
+          ? pkg.workspaces.packages
+          : [];
+
+      for (const pattern of ws) {
+        if (typeof pattern !== "string") continue;
+        if (pattern.includes("*")) {
+          const base = pattern.replace(/\/\*.*$/, "");
+          const baseDir = path.join(root, base);
+          if (await exists(baseDir)) {
+            const entries = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const sub = path.join(baseDir, entry.name);
+                const rel = path.relative(root, sub);
+                projects.set(rel, { name: rel, path: sub, relative: rel });
+              }
+            }
+          }
+        } else {
+          const target = path.join(root, pattern);
+          if ((await exists(target)) && (await isDirectory(target))) {
+            const rel = path.relative(root, target);
+            projects.set(rel, { name: rel, path: target, relative: rel });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check projects/ directory
+  const projectsDir = path.join(root, "projects");
+  if (await exists(projectsDir)) {
+    const entries = await readdir(projectsDir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const sub = path.join(projectsDir, entry.name);
+        const rel = path.relative(root, sub);
+        projects.set(entry.name, { name: entry.name, path: sub, relative: rel });
+      }
+    }
+  }
+
+  // 3. Fallback: scan 1-2 levels deep for folders with package.json or AGENTS.md
+  if (projects.size === 0) {
+    const ignored = new Set([
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "coverage",
+      "archive",
+      "reports",
+      "screenshots",
+      "tests",
+      "scripts",
+      "docs",
+      "elements",
+    ]);
+
+    const topEntries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    for (const top of topEntries) {
+      if (!top.isDirectory() || ignored.has(top.name) || top.name.startsWith(".")) continue;
+      const topPath = path.join(root, top.name);
+      if (
+        (await exists(path.join(topPath, "package.json"))) ||
+        (await exists(path.join(topPath, "AGENTS.md")))
+      ) {
+        const rel = top.name;
+        projects.set(rel, { name: rel, path: topPath, relative: rel });
+        continue;
+      }
+      const subEntries = await readdir(topPath, { withFileTypes: true }).catch(() => []);
+      for (const sub of subEntries) {
+        if (!sub.isDirectory() || ignored.has(sub.name) || sub.name.startsWith(".")) continue;
+        const subPath = path.join(topPath, sub.name);
+        if (
+          (await exists(path.join(subPath, "package.json"))) ||
+          (await exists(path.join(subPath, "AGENTS.md")))
+        ) {
+          const rel = `${top.name}/${sub.name}`;
+          projects.set(rel, { name: rel, path: subPath, relative: rel });
+        }
+      }
+    }
+  }
+
+  return Array.from(projects.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function findProjectRoot(startDir = process.cwd()): Promise<string | null> {
