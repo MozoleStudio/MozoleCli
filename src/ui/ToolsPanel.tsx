@@ -6,6 +6,7 @@ import { optimizeAssets } from "../commands/assets.js";
 import { performanceCommand } from "../commands/performance.js";
 import { createRelease } from "../commands/release.js";
 import { COMPONENTS } from "../scaffold/components.js";
+import { serverManager } from "../server/manager.js";
 
 interface ToolItem {
   key: string;
@@ -82,6 +83,7 @@ export function ToolsPanel({
   onLog,
   onTabSelect,
   onEditingChange,
+  onExit,
 }: {
   projectRoot: string;
   activeProject?: string;
@@ -89,6 +91,7 @@ export function ToolsPanel({
   onLog: (text: string, level?: "info" | "success" | "warn" | "error") => void;
   onTabSelect?: (tab: "overview" | "servers" | "projects" | "logs" | "workspace" | "tools") => void;
   onEditingChange?: (editing: boolean) => void;
+  onExit?: () => void;
 }) {
   const [selected, setSelected] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -154,6 +157,15 @@ export function ToolsPanel({
   }
 
   useInput((input, key) => {
+    if (key.ctrl && (input === "c" || input === "C" || input === "\x03")) {
+      serverManager.stopAll();
+      onExit?.();
+      if (!process.env.VITEST) {
+        process.exit(0);
+      }
+      return;
+    }
+
     if (busy) return;
     if (key.escape) {
       if (editing) {

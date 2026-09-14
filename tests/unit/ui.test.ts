@@ -12,7 +12,7 @@ import { repomapCommand } from "../../src/commands/repomap.js";
 import { uiCommand } from "../../src/commands/ui.js";
 import { verifyCommand } from "../../src/commands/verify.js";
 import { serverManager } from "../../src/server/manager.js";
-import { CockpitApp } from "../../src/ui/CockpitApp.js";
+import { COCKPIT_TAB_LABELS, CockpitApp } from "../../src/ui/CockpitApp.js";
 import { ToolsPanel } from "../../src/ui/ToolsPanel.js";
 import { atomicWrite } from "../../src/utils/fs.js";
 
@@ -194,6 +194,39 @@ describe("prototype cockpit selection", () => {
         activeProject: "client-a",
         onBack: vi.fn(),
         onLog: vi.fn(),
+      }),
+    );
+    expect(instance).toBeDefined();
+    instance.unmount();
+  });
+
+  it("defines and renders single-word tab labels in CockpitApp", () => {
+    // Verify all tabs have single-word uppercase labels
+    for (const [tab, label] of Object.entries(COCKPIT_TAB_LABELS)) {
+      const parts = label.split(" ");
+      expect(parts.length).toBe(2);
+      expect(parts[0]).toMatch(/^\[\d\]$/);
+      expect(parts[1]).toMatch(/^[A-Z]+$/);
+    }
+    expect(COCKPIT_TAB_LABELS.overview).toBe("[1] OVERVIEW");
+    expect(COCKPIT_TAB_LABELS.servers).toBe("[2] SERVERS");
+    expect(COCKPIT_TAB_LABELS.projects).toBe("[3] PROJECTS");
+    expect(COCKPIT_TAB_LABELS.logs).toBe("[4] LOGS");
+    expect(COCKPIT_TAB_LABELS.workspace).toBe("[5] WORKSPACE");
+    expect(COCKPIT_TAB_LABELS.tools).toBe("[6] TOOLS");
+
+    const instance = render(
+      React.createElement(CockpitApp, {
+        projectRoot: path.join(root, "projects/client-a"),
+        activeProject: "client-a",
+        projects: [
+          {
+            name: "client-a",
+            path: path.join(root, "projects/client-a"),
+            relative: "projects/client-a",
+          },
+        ],
+        initialTab: "overview",
       }),
     );
     expect(instance).toBeDefined();

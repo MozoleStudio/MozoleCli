@@ -214,8 +214,19 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
     }
   };
 
-  process.once("SIGINT", restore);
-  process.once("SIGTERM", restore);
+  let didShutdown = false;
+  const shutdown = () => {
+    if (didShutdown) return;
+    didShutdown = true;
+    restore();
+    serverManager.stopAll();
+    if (!process.env.VITEST) {
+      process.exit(0);
+    }
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 
   try {
     const instance = render(
@@ -225,14 +236,15 @@ export async function uiCommand(options: UiOptions = {}): Promise<void> {
         protoRoot,
         projects: discoveredProjects,
         initialTab,
-        onExit: restore,
+        onExit: shutdown,
       }),
+      { exitOnCtrlC: true },
     );
 
     await instance.waitUntilExit();
   } finally {
-    restore();
-    process.removeListener("SIGINT", restore);
-    process.removeListener("SIGTERM", restore);
+    shutdown();
+    process.removeListener("SIGINT", shutdown);
+    process.removeListener("SIGTERM", shutdown);
   }
 }

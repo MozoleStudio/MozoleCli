@@ -19,6 +19,15 @@ import { ToolsPanel } from "./ToolsPanel.js";
 
 export type CockpitTab = "overview" | "servers" | "projects" | "logs" | "workspace" | "tools";
 
+export const COCKPIT_TAB_LABELS: Record<CockpitTab, string> = {
+  overview: "[1] OVERVIEW",
+  servers: "[2] SERVERS",
+  projects: "[3] PROJECTS",
+  logs: "[4] LOGS",
+  workspace: "[5] WORKSPACE",
+  tools: "[6] TOOLS",
+};
+
 export interface CockpitProps {
   projectRoot: string;
   activeProject: string;
@@ -406,6 +415,17 @@ export function CockpitApp({
   // Keyboard navigation
   useInput(
     (input, key) => {
+      // Immediate global exit on Ctrl+C from anywhere in TUI
+      if (key.ctrl && (input === "c" || input === "C" || input === "\x03")) {
+        serverManager.stopAll();
+        onExit?.();
+        exit();
+        if (!process.env.VITEST) {
+          process.exit(0);
+        }
+        return;
+      }
+
       if (currentTab === "tools" && toolsEditing) return;
       // Form interaction inside Workspace tab
       if (currentTab === "workspace" && workspaceMode !== "menu") {
@@ -505,8 +525,12 @@ export function CockpitApp({
           setCurrentTab("overview");
           return;
         }
+        serverManager.stopAll();
         onExit?.();
         exit();
+        if (!process.env.VITEST) {
+          process.exit(0);
+        }
         return;
       }
 
@@ -670,28 +694,32 @@ export function CockpitApp({
       {/* Tab Navigation Strip (htop/k9s inspired) */}
       <Box borderStyle="single" borderColor="gray" paddingX={1} gap={2}>
         <Text bold color={currentTab === "overview" ? "cyan" : "gray"}>
-          {currentTab === "overview" ? "● [1] OVERVIEW & ROADMAP" : "  [1] OVERVIEW & ROADMAP"}
+          {currentTab === "overview"
+            ? `● ${COCKPIT_TAB_LABELS.overview}`
+            : `  ${COCKPIT_TAB_LABELS.overview}`}
         </Text>
         <Text bold color={currentTab === "servers" ? "cyan" : "gray"}>
           {currentTab === "servers"
-            ? `● [2] DEV SERVERS (${allRunningServers.length} ACTIVE)`
-            : `  [2] DEV SERVERS (${allRunningServers.length})`}
+            ? `● ${COCKPIT_TAB_LABELS.servers}`
+            : `  ${COCKPIT_TAB_LABELS.servers}`}
         </Text>
         <Text bold color={currentTab === "projects" ? "cyan" : "gray"}>
           {currentTab === "projects"
-            ? `● [3] PROJECTS (${workspaceProjects.length})`
-            : `  [3] PROJECTS (${workspaceProjects.length})`}
+            ? `● ${COCKPIT_TAB_LABELS.projects}`
+            : `  ${COCKPIT_TAB_LABELS.projects}`}
         </Text>
         <Text bold color={currentTab === "logs" ? "cyan" : "gray"}>
-          {currentTab === "logs" ? "● [4] LIVE LOGS" : "  [4] LIVE LOGS"}
+          {currentTab === "logs" ? `● ${COCKPIT_TAB_LABELS.logs}` : `  ${COCKPIT_TAB_LABELS.logs}`}
         </Text>
         <Text bold color={currentTab === "workspace" ? "cyan" : "gray"}>
           {currentTab === "workspace"
-            ? "● [5] WORKSPACE & GENERATOR"
-            : "  [5] WORKSPACE & GENERATOR"}
+            ? `● ${COCKPIT_TAB_LABELS.workspace}`
+            : `  ${COCKPIT_TAB_LABELS.workspace}`}
         </Text>
         <Text bold color={currentTab === "tools" ? "cyan" : "gray"}>
-          {currentTab === "tools" ? "● [6] TOOLS" : "  [6] TOOLS"}
+          {currentTab === "tools"
+            ? `● ${COCKPIT_TAB_LABELS.tools}`
+            : `  ${COCKPIT_TAB_LABELS.tools}`}
         </Text>
       </Box>
 
@@ -709,10 +737,11 @@ export function CockpitApp({
           }}
           onEditingChange={setToolsEditing}
           onLog={addLog}
+          onExit={onExit}
         />
       )}
 
-      {/* TAB 1: OVERVIEW & ROADMAP */}
+      {/* TAB 1: OVERVIEW */}
       {currentTab === "overview" && (
         <Box flexDirection="column" width="100%">
           <Box flexDirection="row" width="100%">

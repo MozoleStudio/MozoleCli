@@ -1,6 +1,6 @@
 {
   "name": "@mozole/cli",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "description": "Agentic project generator and development cockpit for Mozole Studio",
   "type": "module",
   "bin": {

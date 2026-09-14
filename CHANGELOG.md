@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.4
+
+- Simplify TUI navigation tab labels to concise single words (`OVERVIEW`, `SERVERS`, `PROJECTS`, `LOGS`, `WORKSPACE`, `TOOLS`).
+- Add immediate global `Ctrl+C` exit handling across all TUI modes (navigation, form inputs, tool editing), shutting down running servers and restoring terminal state cleanly.
+
 ## 2.2.3
 
 - Detect project-configured ports from `vite.config.*`, `mozole.config.json`, or `package.json` scripts (e.g. port 3000 for MozoleSite) instead of forcing port 5173.

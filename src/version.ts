@@ -1,4 +1,4 @@
-export const CLI_VERSION = "2.2.3";
+export const CLI_VERSION = "2.2.4";
 
 export const TOOLCHAIN = Object.freeze({
   engine: "MozoleCLI v2",
