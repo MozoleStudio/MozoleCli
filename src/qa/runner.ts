@@ -181,29 +181,25 @@ async function discoverRoutesAndDirectory(
     );
   }
 
-  const routes = new Set<string>(["/"]);
-
-  async function scanHtmlRoutes(dir: string, base: string) {
-    if (!(await exists(dir))) return;
+  async function scanHtmlRoutes(dir: string, base: string): Promise<string[]> {
+    if (!(await exists(dir))) return [];
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await scanHtmlRoutes(full, `${base}/${entry.name}`);
-      } else if (entry.isFile() && entry.name.endsWith(".html")) {
-        if (entry.name === "__spa-fallback.html") continue;
-        if (entry.name === "index.html") {
-          routes.add(base || "/");
-        } else {
-          const routeName = entry.name.replace(/\.html$/, "");
-          routes.add(`${base}/${routeName}`);
-        }
-      }
-    }
+    const nestedRoutes = await Promise.all(
+      entries.map(async (entry): Promise<string[]> => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return scanHtmlRoutes(full, `${base}/${entry.name}`);
+        if (!entry.isFile() || !entry.name.endsWith(".html")) return [];
+        if (entry.name === "__spa-fallback.html") return [];
+        if (entry.name === "index.html") return [base || "/"];
+        const routeName = entry.name.replace(/\.html$/, "");
+        return [`${base}/${routeName}`];
+      }),
+    );
+    return nestedRoutes.flat();
   }
 
-  await scanHtmlRoutes(staticDir, "");
-  return { staticDir, routes: Array.from(routes) };
+  const discoveredRoutes = await scanHtmlRoutes(staticDir, "");
+  return { staticDir, routes: Array.from(new Set(["/", ...discoveredRoutes])) };
 }
 
 export async function runLiveGeometryProbe(
@@ -238,19 +234,24 @@ export async function runLiveGeometryProbe(
     { width: 1280, height: 800, name: "Desktop (1280px)" },
   ];
 
-  const cssList: string[] = [];
-  async function collectCss(dir: string) {
-    if (!(await exists(dir))) return;
-    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory() && !["node_modules", ".git"].includes(e.name)) {
-        await collectCss(full);
-      } else if (e.isFile() && e.name.endsWith(".css")) {
-        cssList.push(await fs.readFile(full, "utf8"));
-      }
-    }
+  async function collectCss(dir: string): Promise<string[]> {
+    if (!(await exists(dir))) return [];
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const nestedCss = await Promise.all(
+      entries.map(async (entry): Promise<string[]> => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory() && !["node_modules", ".git"].includes(entry.name)) {
+          return collectCss(full);
+        }
+        if (entry.isFile() && entry.name.endsWith(".css")) {
+          return [await fs.readFile(full, "utf8")];
+        }
+        return [];
+      }),
+    );
+    return nestedCss.flat();
   }
-  await collectCss(staticDir);
+  const cssList = await collectCss(staticDir);
   const boundaryPoints = extractBreakpointBoundaries(cssList, { minWidth: 320, maxWidth: 1440 });
   for (const bp of boundaryPoints) {
     if (!defaultViewports.some((v) => v.width === bp)) {

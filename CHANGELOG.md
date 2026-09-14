@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.1
+
+- Check doctor ports concurrently while keeping diagnostic output in port order.
+- Scan built HTML routes and CSS files concurrently for the live geometry probe,
+  preserving stable route and stylesheet order.
+- Cover doctor diagnostics when Git cannot be launched.
+
 ## 2.2.0
 
 - Add repository hygiene audits, conservative signature cleanup, commit-message checks
