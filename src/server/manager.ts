@@ -13,16 +13,54 @@ export interface ManagedServer {
   recentLogs: string[];
 }
 
-export async function findAvailablePort(startPort = 5173, maxTries = 20): Promise<number> {
-  for (let p = startPort; p < startPort + maxTries; p++) {
-    const free = await new Promise<boolean>((resolve) => {
-      const server = net.createServer();
-      server.once("error", () => resolve(false));
-      server.once("listening", () => {
-        server.close(() => resolve(true));
-      });
-      server.listen(p, "127.0.0.1");
+export function checkPortHost(
+  port: number,
+  host: string,
+): Promise<"available" | "in_use" | "unsupported"> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRNOTAVAIL" || err.code === "EINVAL") {
+        resolve("unsupported");
+      } else {
+        resolve("in_use");
+      }
     });
+    server.once("listening", () => {
+      server.close(() => resolve("available"));
+    });
+    server.listen(port, host);
+  });
+}
+
+export async function isPortAvailable(port: number): Promise<boolean> {
+  const hosts = ["127.0.0.1", "::1"];
+  let availableCount = 0;
+
+  for (const host of hosts) {
+    const res = await checkPortHost(port, host);
+    if (res === "in_use") {
+      return false;
+    }
+    if (res === "available") {
+      availableCount++;
+    }
+  }
+
+  return availableCount > 0;
+}
+
+export async function findAvailablePort(
+  startPort = 5173,
+  maxTries = 20,
+  reservedPorts?: Iterable<number>,
+): Promise<number> {
+  const reservedSet = reservedPorts ? new Set(reservedPorts) : null;
+  for (let p = startPort; p < startPort + maxTries; p++) {
+    if (reservedSet?.has(p)) {
+      continue;
+    }
+    const free = await isPortAvailable(p);
     if (free) return p;
   }
   throw new Error(`Unable to find an open port in range ${startPort}-${startPort + maxTries}`);
@@ -37,7 +75,8 @@ class ServerManager {
       return existing;
     }
 
-    const port = await findAvailablePort(5173);
+    const reservedPorts = this.getRunningServers().map((s) => s.port);
+    const port = await findAvailablePort(5173, 20, reservedPorts);
     const recentLogs: string[] = [];
 
     const isWindows = process.platform === "win32";

@@ -1,19 +1,10 @@
-import net from "node:net";
 import pc from "picocolors";
+import { isPortAvailable } from "../server/manager.js";
 import { findLocalChromium } from "../utils/browser.js";
 import { run } from "../utils/process.js";
 import { CLI_VERSION } from "../version.js";
 
-async function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.once("listening", () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, "127.0.0.1");
-  });
-}
+export { isPortAvailable };
 
 export async function doctorCommand(): Promise<void> {
   console.log(pc.cyan(`\n🩺 Mozole Studio Doctor (v${CLI_VERSION})`));

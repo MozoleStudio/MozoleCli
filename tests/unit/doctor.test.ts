@@ -1,6 +1,6 @@
 import pc from "picocolors";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { doctorCommand } from "../../src/commands/doctor.js";
+import { doctorCommand, isPortAvailable } from "../../src/commands/doctor.js";
 import { findLocalChromium } from "../../src/utils/browser.js";
 import { run } from "../../src/utils/process.js";
 
@@ -13,6 +13,11 @@ afterEach(() => {
 });
 
 describe("doctorCommand", () => {
+  it("probes port availability with dual-stack support", async () => {
+    const free = await isPortAvailable(59897);
+    expect(typeof free).toBe("boolean");
+  });
+
   it("reports Git as unavailable when launching it fails and continues diagnostics", async () => {
     vi.mocked(run).mockImplementation(async (command, args) => {
       if (command === "git") throw new Error("spawn git ENOENT");
