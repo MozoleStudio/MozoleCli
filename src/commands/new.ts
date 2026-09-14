@@ -13,13 +13,11 @@ export interface NewProjectOptions {
 }
 
 export async function createNewProject(options: NewProjectOptions): Promise<string> {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = path.resolve(options.cwd ?? process.cwd());
   const name = options.name.trim();
 
-  let targetDir = options.targetDir;
-  const protoRoot = await findPrototypeRoot(
-    targetDir ? path.dirname(path.resolve(targetDir)) : cwd,
-  );
+  let targetDir = options.targetDir ? path.resolve(cwd, options.targetDir) : undefined;
+  const protoRoot = await findPrototypeRoot(targetDir ? path.dirname(targetDir) : cwd);
   if (!targetDir) {
     if (protoRoot) {
       targetDir = path.join(protoRoot, "projects", name);

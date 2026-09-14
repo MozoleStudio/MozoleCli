@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { atomicWrite, discoverWorkspaceProjects } from "../../src/utils/fs.js";
+import {
+  atomicWrite,
+  discoverWorkspaceProjects,
+  findPrototypeRoot,
+  isPrototypeRoot,
+} from "../../src/utils/fs.js";
 
 describe("discoverWorkspaceProjects deduplication in prototype workspaces", () => {
   it("never returns duplicates when both workspaces array and projects/ directory are present", async () => {
@@ -58,6 +63,62 @@ describe("discoverWorkspaceProjects deduplication in prototype workspaces", () =
         { name: "shared", relative: "packages/shared" },
         { name: "shared", relative: "projects/shared" },
       ]);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("isPrototypeRoot and findPrototypeRoot accurate identification", () => {
+  it("rejects generic directories even if they contain a subfolder named projects", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-generic-"));
+    try {
+      await fs.mkdir(path.join(dir, "projects"), { recursive: true });
+      expect(await isPrototypeRoot(dir)).toBe(false);
+      expect(await findPrototypeRoot(dir)).toBeNull();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("identifies prototype root when mozole.config.json declares projectsDir: 'projects'", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-proto-cfg-"));
+    try {
+      await atomicWrite(
+        path.join(dir, "mozole.config.json"),
+        JSON.stringify({ projectsDir: "projects" }),
+      );
+      expect(await isPrototypeRoot(dir)).toBe(true);
+
+      const subDir = path.join(dir, "projects", "sub");
+      await fs.mkdir(subDir, { recursive: true });
+      expect(await findPrototypeRoot(subDir)).toBe(dir);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("identifies prototype root when package.json contains mozolePrototype: true", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-proto-pkg-"));
+    try {
+      await atomicWrite(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "proto-repo", mozolePrototype: true }),
+      );
+      expect(await isPrototypeRoot(dir)).toBe(true);
+      expect(await findPrototypeRoot(dir)).toBe(dir);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("identifies prototype root when PROTOTYPE.md and projects/ exist", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mozole-proto-doc-"));
+    try {
+      await atomicWrite(path.join(dir, "PROTOTYPE.md"), "# Prototype");
+      await fs.mkdir(path.join(dir, "projects"), { recursive: true });
+      expect(await isPrototypeRoot(dir)).toBe(true);
+      expect(await findPrototypeRoot(dir)).toBe(dir);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

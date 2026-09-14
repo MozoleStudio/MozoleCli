@@ -25,6 +25,12 @@ const newCmd = defineCommand({
       description: "Backend runtime: 'none' (default), 'php', or 'node'",
       default: "none",
     },
+    path: {
+      type: "string",
+      description:
+        "Custom target directory (default: ./<name> or projects/<name> in prototype workspace)",
+      required: false,
+    },
   },
   async run({ args }) {
     const { createNewProject } = await import("./commands/new.js");
@@ -32,6 +38,7 @@ const newCmd = defineCommand({
       name: args.name,
       flagship: args.flagship,
       backend: (args.backend as "php" | "node" | "none") || "none",
+      targetDir: args.path,
     });
   },
 });

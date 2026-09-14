@@ -108,6 +108,23 @@ describe("CLI Integration Suite", () => {
     expect(await exists(path.join(projectDir, "src", "styles", "tokens.css"))).toBe(true);
   });
 
+  it("scaffolds directly under current working directory in standalone mode", async () => {
+    const standaloneDir = path.join(tmpDir, "standalone-workspace");
+    await fs.mkdir(standaloneDir, { recursive: true });
+
+    const projectDir = await createNewProject({
+      name: "standalone-client",
+      cwd: standaloneDir,
+      flagship: false,
+      backend: "none",
+      initGit: false,
+    });
+
+    expect(projectDir).toBe(path.join(standaloneDir, "standalone-client"));
+    expect(await exists(path.join(projectDir, "package.json"))).toBe(true);
+    expect(await exists(path.join(projectDir, "AGENTS.md"))).toBe(true);
+  });
+
   it("manages 10-step atomic phases (status, next, reopen)", async () => {
     const projectDir = path.join(tmpDir, "phase-site");
     await createNewProject({
