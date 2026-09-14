@@ -28,7 +28,13 @@ async function project(
   return root;
 }
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots
+      .splice(0)
+      .map((root) =>
+        rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }).catch(() => {}),
+      ),
+  );
 });
 
 describe("performance graph and measurement", () => {

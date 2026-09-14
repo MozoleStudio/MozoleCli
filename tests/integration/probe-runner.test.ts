@@ -14,7 +14,9 @@ describe("Headless Live DOM Geometry & Trace Runner", () => {
   });
 
   afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    await fs
+      .rm(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+      .catch(() => {});
   });
 
   it("verifies clean accessible HTML with zero defects using local browser", async () => {

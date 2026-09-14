@@ -17,7 +17,9 @@ describe("scaffoldNewProject", () => {
   });
 
   afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    await fs
+      .rm(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+      .catch(() => {});
   });
 
   it("scaffolds a complete standard project with zero synthetic traces and valid tokens", async () => {

@@ -45,7 +45,9 @@ require __DIR__ . '/index.php';
   });
 
   afterEach(async () => {
-    await fs.rm(directory, { recursive: true, force: true });
+    await fs
+      .rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+      .catch(() => {});
   });
 
   async function request(server: Record<string, string>, payload: Record<string, unknown> = {}) {

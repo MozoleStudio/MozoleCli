@@ -48,7 +48,9 @@ describe("prototype cockpit selection", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
-    await fs.rm(root, { recursive: true, force: true });
+    await fs
+      .rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+      .catch(() => {});
   });
 
   it.each(["phase-status", "phase-next", "verify"])(

@@ -21,7 +21,9 @@ describe("CLI Integration Suite", () => {
   });
 
   afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    await fs
+      .rm(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+      .catch(() => {});
   });
 
   it("rejects invalid command options without creating a project or passing QA", async () => {
