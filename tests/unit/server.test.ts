@@ -1,12 +1,17 @@
 import type { ChildProcess } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkPortHost,
+  detectProjectPort,
   findAvailablePort,
   isPortAvailable,
   serverManager,
 } from "../../src/server/manager.js";
+import { atomicWrite } from "../../src/utils/fs.js";
 
 describe("ServerManager and Port Availability", () => {
   afterEach(() => {
@@ -139,5 +144,37 @@ describe("ServerManager and Port Availability", () => {
     );
     expect(port).toBe(5174);
     spy.mockRestore();
+  });
+
+  it("detects port in use when bound on IPv4 0.0.0.0", async () => {
+    const testPort = 59897;
+    const server = net.createServer();
+    await new Promise<void>((resolve) => {
+      server.listen(testPort, "0.0.0.0", () => resolve());
+    });
+
+    try {
+      const available = await isPortAvailable(testPort);
+      expect(available).toBe(false);
+    } finally {
+      await new Promise((res) => server.close(res));
+    }
+  });
+
+  it("detects project port from vite.config, package.json, or defaults to 5173", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "mozole-port-"));
+    try {
+      expect(await detectProjectPort(tmpDir)).toBe(5173);
+
+      await atomicWrite(
+        path.join(tmpDir, "vite.config.js"),
+        "export default { server: { port: 3000 } };",
+      );
+      expect(await detectProjectPort(tmpDir)).toBe(3000);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }).catch(
+        () => {},
+      );
+    }
   });
 });

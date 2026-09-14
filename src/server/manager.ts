@@ -1,5 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import net from "node:net";
+import path from "node:path";
+import { exists } from "../utils/fs.js";
 import { terminateProcess, trackProcess } from "../utils/process.js";
 
 export interface ManagedServer {
@@ -11,6 +14,54 @@ export interface ManagedServer {
   url: string;
   startTime: number;
   recentLogs: string[];
+  exitCode?: number | null;
+  error?: string | null;
+}
+
+export async function detectProjectPort(projectPath: string): Promise<number> {
+  const configPath = path.join(projectPath, "mozole.config.json");
+  if (await exists(configPath)) {
+    try {
+      const config = JSON.parse(await readFile(configPath, "utf8"));
+      if (typeof config.port === "number" && config.port > 0 && config.port < 65536) {
+        return config.port;
+      }
+      if (typeof config.devPort === "number" && config.devPort > 0 && config.devPort < 65536) {
+        return config.devPort;
+      }
+    } catch {}
+  }
+
+  for (const ext of [".js", ".ts", ".mjs", ".cjs"]) {
+    const viteConfig = path.join(projectPath, `vite.config${ext}`);
+    if (await exists(viteConfig)) {
+      try {
+        const content = await readFile(viteConfig, "utf8");
+        const match = content.match(/port\s*:\s*(\d+)/);
+        if (match) {
+          const parsed = Number.parseInt(match[1], 10);
+          if (parsed > 0 && parsed < 65536) return parsed;
+        }
+      } catch {}
+    }
+  }
+
+  const pkgPath = path.join(projectPath, "package.json");
+  if (await exists(pkgPath)) {
+    try {
+      const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
+      const devScript = pkg.scripts?.dev;
+      if (typeof devScript === "string") {
+        const match = devScript.match(/--port\s+(\d+)/);
+        if (match) {
+          const parsed = Number.parseInt(match[1], 10);
+          if (parsed > 0 && parsed < 65536) return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  return 5173;
 }
 
 export function checkPortHost(
@@ -34,7 +85,7 @@ export function checkPortHost(
 }
 
 export async function isPortAvailable(port: number): Promise<boolean> {
-  const hosts = ["127.0.0.1", "::1"];
+  const hosts = ["127.0.0.1", "::1", "0.0.0.0"];
   let availableCount = 0;
 
   for (const host of hosts) {
@@ -68,6 +119,11 @@ export async function findAvailablePort(
 
 class ServerManager {
   private servers = new Map<string, ManagedServer>();
+  private lastStoppedServers = new Map<string, ManagedServer>();
+
+  public getLastStoppedServer(projectName: string): ManagedServer | undefined {
+    return this.lastStoppedServers.get(projectName);
+  }
 
   public async startServer(projectName: string, projectPath: string): Promise<ManagedServer> {
     const existing = this.servers.get(projectName);
@@ -76,7 +132,8 @@ class ServerManager {
     }
 
     const reservedPorts = this.getRunningServers().map((s) => s.port);
-    const port = await findAvailablePort(5173, 20, reservedPorts);
+    const startPort = await detectProjectPort(projectPath);
+    const port = await findAvailablePort(startPort, 20, reservedPorts);
     const recentLogs: string[] = [];
 
     const isWindows = process.platform === "win32";
@@ -118,7 +175,13 @@ class ServerManager {
       recentLogs,
     };
 
-    child.once("close", () => {
+    child.once("close", (code) => {
+      managed.exitCode = code;
+      if (code !== 0 && code !== null) {
+        managed.error =
+          managed.recentLogs.slice(-3).join(" ") || `Process exited with code ${code}`;
+      }
+      this.lastStoppedServers.set(projectName, managed);
       if (this.servers.get(projectName) === managed) this.servers.delete(projectName);
     });
 

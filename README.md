@@ -137,5 +137,5 @@ check; it does not measure runtime page speed or Core Web Vitals.
 
 Run `npm run verify`, then `npm pack`. Packing rebuilds a clean `dist` directory and
 includes toolkit documentation. Inspect the archive and smoke-test its installed CLI.
-To publish the reviewed archive, run `npm publish ./mozole-cli-2.2.2.tgz --access public`
+To publish the reviewed archive, run `npm publish ./mozole-cli-2.2.3.tgz --access public`
 with an authorized npm account. Package creation does not publish anything.

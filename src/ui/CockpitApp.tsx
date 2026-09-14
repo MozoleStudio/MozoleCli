@@ -8,7 +8,7 @@ import { prototypeInit } from "../commands/prototype.js";
 import { repomapCommand } from "../commands/repomap.js";
 import { verifyCommand } from "../commands/verify.js";
 import { PHASES } from "../scaffold/phases.js";
-import { type ManagedServer, serverManager } from "../server/manager.js";
+import { type ManagedServer, detectProjectPort, serverManager } from "../server/manager.js";
 import {
   type DiscoveredProject,
   discoverWorkspaceProjects,
@@ -73,22 +73,23 @@ export function CockpitApp({
   });
 
   const [currentPhase, setCurrentPhase] = useState<string>("00");
+  const [projectPort, setProjectPort] = useState<number>(5173);
   const [server, setServer] = useState<ManagedServer | undefined>(() =>
-    serverManager.getServer(activeProject),
+    serverManager.getServer(initialActiveProject),
   );
   const [allRunningServers, setAllRunningServers] = useState<ManagedServer[]>(() =>
     serverManager.getRunningServers(),
   );
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const [logs, setLogs] = useState<LogEntry[]>([
     {
-      id: "init",
+      id: `${Date.now()}-init`,
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      text: `Cockpit initialized for ${activeProject}`,
+      text: `Cockpit initialized for ${initialActiveProject} (Mozole v${CLI_VERSION})`,
     },
   ]);
-  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const addLog = useCallback((text: string, level: LogEntry["level"] = "info") => {
     const entry: LogEntry = {
@@ -103,8 +104,12 @@ export function CockpitApp({
   const refreshPhase = useCallback(
     async (targetDir = projectRoot) => {
       try {
-        const status = await getProjectPhaseStatus(targetDir);
+        const [status, detectedPort] = await Promise.all([
+          getProjectPhaseStatus(targetDir),
+          detectProjectPort(targetDir),
+        ]);
         setCurrentPhase(status.currentPhase);
+        setProjectPort(detectedPort);
       } catch {
         setCurrentPhase("00");
       }
@@ -120,6 +125,9 @@ export function CockpitApp({
       addLog(`Switched active workspace project to: ${project.name}`, "info");
       refreshPhase(project.path);
       setServer(serverManager.getServer(project.name));
+      detectProjectPort(project.path)
+        .then(setProjectPort)
+        .catch(() => {});
     },
     [addLog, refreshPhase],
   );
@@ -146,11 +154,23 @@ export function CockpitApp({
             },
           ];
         });
+      } else if (!srv) {
+        const last = serverManager.getLastStoppedServer(activeProject);
+        if (
+          last &&
+          last.exitCode !== null &&
+          last.exitCode !== undefined &&
+          last.exitCode !== 0 &&
+          last.error
+        ) {
+          addLog(`Dev server for ${activeProject} exited: ${last.error}`, "error");
+          last.error = null;
+        }
       }
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [activeProject, refreshPhase]);
+  }, [activeProject, refreshPhase, addLog]);
 
   // Toggle server for active project
   const toggleServer = useCallback(async () => {
@@ -770,14 +790,14 @@ export function CockpitApp({
                 </Box>
                 <Box marginTop={1}>
                   <Text dimColor>Port: </Text>
-                  <Text bold>{server ? server.port : "5173"} </Text>
+                  <Text bold>{server ? server.port : projectPort} </Text>
                   <Text dimColor>PID: </Text>
                   <Text bold>{server ? server.process.pid : "None"}</Text>
                 </Box>
                 <Box>
                   <Text dimColor>Target URL: </Text>
                   <Text color={server ? "cyan" : "gray"}>
-                    {server ? server.url : "http://localhost:5173"}
+                    {server ? server.url : `http://localhost:${projectPort}`}
                   </Text>
                 </Box>
                 <Box marginTop={1}>
@@ -936,17 +956,27 @@ export function CockpitApp({
                 <Text dimColor>○ SERVER INACTIVE</Text>
               )}
             </Box>
-            {!server || server.recentLogs.length === 0 ? (
-              <Box paddingY={1}>
-                <Text dimColor>No live server logs recorded yet for {activeProject}.</Text>
-              </Box>
-            ) : (
-              server.recentLogs.slice(-10).map((l, i) => (
-                <Text key={`${i}-${l}`} dimColor={!l.includes("error")}>
+            {(() => {
+              const displayLogs = server
+                ? server.recentLogs
+                : (serverManager.getLastStoppedServer(activeProject)?.recentLogs ?? []);
+              if (displayLogs.length === 0) {
+                return (
+                  <Box paddingY={1}>
+                    <Text dimColor>No server logs recorded yet for {activeProject}.</Text>
+                  </Box>
+                );
+              }
+              return displayLogs.slice(-10).map((l, i) => (
+                <Text
+                  key={`${i}-${l}`}
+                  color={l.toLowerCase().includes("error") ? "red" : undefined}
+                  dimColor={!l.toLowerCase().includes("error")}
+                >
                   {l}
                 </Text>
-              ))
-            )}
+              ));
+            })()}
           </Box>
         </Box>
       )}

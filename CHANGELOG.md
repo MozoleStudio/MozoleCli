@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.3
+
+- Detect project-configured ports from `vite.config.*`, `mozole.config.json`, or `package.json` scripts (e.g. port 3000 for MozoleSite) instead of forcing port 5173.
+- Expand port availability detection to include IPv4 wildcard `0.0.0.0` in addition to loopbacks.
+- Preserve stopped and crashed server error logs in ServerManager, displaying actionable error details in the TUI cockpit.
+
 ## 2.2.2
 
 - Support dual-stack (IPv4 `127.0.0.1` and IPv6 `::1`) port availability detection in dev server manager and doctor diagnostics.
