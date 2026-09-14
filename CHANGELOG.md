@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.2
+
+- Support dual-stack (IPv4 `127.0.0.1` and IPv6 `::1`) port availability detection in dev server manager and doctor diagnostics.
+- Prevent port collisions by dynamically reserving ports of actively running workspace dev servers.
+- Add comprehensive dual-stack and port reservation unit tests.
+
 ## 2.2.1
 
 - Check doctor ports concurrently while keeping diagnostic output in port order.
